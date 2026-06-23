@@ -65,7 +65,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    btnEntrarPainel.addEventListener('click', () => {
+   btnEntrarPainel.addEventListener('click', () => {
         const nomeInput = inputNomeOperador.value.trim();
         if (nomeInput === '') {
             inputNomeOperador.style.borderColor = 'var(--danger)';
@@ -74,7 +74,11 @@ document.addEventListener('DOMContentLoaded', () => {
         localStorage.setItem('dashfull_operador', nomeInput);
         operadorAtivo = nomeInput;
         nomeOperadorHeader.innerText = operadorAtivo;
+        
+        // 🎯 Correção Direta: Altera o atributo e força o sumiço visual imediato
         modalOperador.setAttribute('aria-hidden', 'true');
+        modalOperador.style.display = 'none'; 
+        
         atualizarPainelCompleto();
     });
 
@@ -120,9 +124,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // 📡 CAPTURA DE DADOS DO BACK-END (PORTA 3000)
+    // 📡 CAPTURA DE DADOS DINÂMICA (COMPATÍVEL COM LOCALHOST E VERCEL)
     async function carregarDadosDoBack() {
         try {
-            const res = await fetch('http://localhost:3000/api/full/inbounds');
+            // Rota relativa: aponta para /api/inbounds automaticamente na nuvem
+            const res = await fetch('/api/inbounds'); 
             const data = await res.json();
             dadosLocais = data;
 
