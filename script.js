@@ -8,6 +8,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const headerTitle = document.getElementById('header-title');
     const headerSubtitle = document.getElementById('header-subtitle');
 
+    // Elementos do Operador
+    const modalOperador = document.getElementById('modal-operador');
+    const inputNomeOperador = document.getElementById('input-nome-operador');
+    const btnEntrarPainel = document.getElementById('btn-entrar-painel');
+    const nomeOperadorHeader = document.getElementById('nome-operador-header');
+    const displayOperadorClick = document.getElementById('display-operador');
+
     // Elementos do Painel Geral
     const tbodyGeral = document.getElementById('tbody-geral');
     const cardEnvios = document.getElementById('total-envios');
@@ -32,7 +39,11 @@ document.addEventListener('DOMContentLoaded', () => {
     let dadosLocais = [];
     let dadosFiltradosAtuais = [];
     let statusPillAtivo = 'Todos';
+    let operadorAtivo = '';
     
+    // Objeto temporário para guardar logs na sessão (Simulando persistência do Firebase)
+    let logsOperacionaisLocais = {};
+
     // Configurações de Paginação (30 itens por página)
     let paginaAtual = 1;
     const itensPorPagina = 30;
@@ -41,7 +52,40 @@ document.addEventListener('DOMContentLoaded', () => {
     let chartInstanceGalpao = null;
     let chartInstanceDivergencia = null;
 
-    // 🔄 1. RECOLHIMENTO DO MENU LATERAL (SIDEBAR COLLAPSE)
+    // 🪟 CONTROLE DETECTORD OPERADOR (ENTRADA SEGURA)
+    function verificarOperador() {
+        const salvo = localStorage.getItem('dashfull_operador');
+        if (salvo && salvo.trim() !== '') {
+            operadorAtivo = salvo;
+            nomeOperadorHeader.innerText = operadorAtivo;
+            modalOperador.setAttribute('aria-hidden', 'true');
+        } else {
+            modalOperador.setAttribute('aria-hidden', 'false');
+            inputNomeOperador.focus();
+        }
+    }
+
+    btnEntrarPainel.addEventListener('click', () => {
+        const nomeInput = inputNomeOperador.value.trim();
+        if (nomeInput === '') {
+            inputNomeOperador.style.borderColor = 'var(--danger)';
+            return;
+        }
+        localStorage.setItem('dashfull_operador', nomeInput);
+        operadorAtivo = nomeInput;
+        nomeOperadorHeader.innerText = operadorAtivo;
+        modalOperador.setAttribute('aria-hidden', 'true');
+        atualizarPainelCompleto();
+    });
+
+    // Possibilidade de trocar de operador clicando no nome dele
+    displayOperadorClick.addEventListener('click', () => {
+        localStorage.removeItem('dashfull_operador');
+        inputNomeOperador.value = operadorAtivo;
+        verificarOperador();
+    });
+
+    // 🔄 RECOLHIMENTO DO MENU LATERAL (SIDEBAR COLLAPSE)
     btnToggleSidebar.addEventListener('click', () => {
         sidebar.classList.toggle('collapsed');
         if (sidebar.classList.contains('collapsed')) {
@@ -99,7 +143,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function atualizarPainelCompleto() {
         filtrarEProcessarDados();
 
-        const pendentes = dadosLocais.filter(item => item.status === 'closed_with_changes' || item.unidades_rece_bidas < item.unidades_declaradas);
+        const pendentes = dadosLocais.filter(item => item.status === 'closed_with_changes' || item.unidades_recebidas < item.unidades_declaradas);
         badgePendenciasNav.innerText = pendentes.length;
         renderizarTabelaPendencias(pendentes);
 
@@ -118,7 +162,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const galpaoSelecionado = filtroGalpao.value;
         const ordemSelecionada = ordenarData.value;
 
-        // Executa os Filtros Combinados
         dadosFiltradosAtuais = dadosLocais.filter(item => {
             const bateConta = (contaSelecionada === 'Todas' || item.conta === contaSelecionada);
             const bateGalpao = (galpaoSelecionado === 'Todos' || item.galpao === galpaoSelecionado);
@@ -132,19 +175,17 @@ document.addEventListener('DOMContentLoaded', () => {
             return bateConta && bateGalpao && bateId && batePill;
         });
 
-        // Executa a Ordenação por Data Reservada
         dadosFiltradosAtuais.sort((a, b) => {
             return ordemSelecionada === 'recente' 
                 ? new Date(b.data) - new Date(a.data)
                 : new Date(a.data) - new Date(b.data);
         });
 
-        // Reseta para a primeira página após qualquer filtragem externa
         paginaAtual = 1;
         recalcularEExibirPagina();
     }
 
-    // 🔢 MOTOR DE PAGINAÇÃO (SLICING DE ARRAY EM BLOCOS DE 30)
+    // 🔢 MOTOR DE PAGINAÇÃO
     function recalcularEExibirPagina() {
         const totalItens = dadosFiltradosAtuais.length;
         const totalPaginas = Math.ceil(totalItens / itensPorPagina) || 1;
@@ -154,10 +195,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const indiceInicio = (paginaAtual - 1) * itensPorPagina;
         const indiceFim = Math.min(indiceInicio + itensPorPagina, totalItens);
 
-        // Separa apenas o pedaço de 30 registros da página ativa
         const dadosPaginados = dadosFiltradosAtuais.slice(indiceInicio, indiceFim);
 
-        // Atualiza letreiro informativo
         paginacaoInfo.innerText = totalItens > 0 
             ? `Exibindo ${indiceInicio + 1}-${indiceFim} de ${totalItens} envios`
             : `Exibindo 0-0 de 0 envios`;
@@ -167,29 +206,24 @@ document.addEventListener('DOMContentLoaded', () => {
         construirBotoesPagina(totalPaginas);
     }
 
-    // 🔢 CONSTRUTOR DE BOTÕES DE PAGINAÇÃO
     function construirBotoesPagina(totalPaginas) {
         paginacaoBotoes.innerHTML = '';
         if (totalPaginas <= 1) return;
 
-        // Botão Voltar
         const btnVoltar = document.createElement('button');
         btnVoltar.innerHTML = '<i class="fa-solid fa-angle-left"></i>';
         btnVoltar.disabled = paginaAtual === 1;
         btnVoltar.addEventListener('click', () => { paginaAtual--; recalcularEExibirPagina(); });
         paginacaoBotoes.appendChild(btnVoltar);
 
-        // Botões Numéricos
         for (let idx = 1; idx <= totalPaginas; idx++) {
             const btnNum = document.createElement('button');
             btnNum.innerText = idx;
             if (idx === paginaAtual) btnNum.classList.add('active');
-            
             btnNum.addEventListener('click', () => { paginaAtual = idx; recalcularEExibirPagina(); });
             paginacaoBotoes.appendChild(btnNum);
         }
 
-        // Botão Avançar
         const btnAvancar = document.createElement('button');
         btnAvancar.innerHTML = '<i class="fa-solid fa-angle-right"></i>';
         btnAvancar.disabled = paginaAtual === totalPaginas;
@@ -197,7 +231,7 @@ document.addEventListener('DOMContentLoaded', () => {
         paginacaoBotoes.appendChild(btnAvancar);
     }
 
-    // 📋 RENDER: VISÃO GERAL
+    // 📋 RENDER: VISÃO GERAL (INTEGRADO COM LOGS DO OPERADOR)
     function renderizarTabelaGeral(envios) {
         if (!tbodyGeral) return;
         tbodyGeral.innerHTML = '';
@@ -221,18 +255,29 @@ document.addEventListener('DOMContentLoaded', () => {
             const dataFormatada = dataObjeto.toLocaleDateString('pt-BR');
             const horaFormatada = dataObjeto.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
+            // 👤 LÓGICA DE MEU STATUS INTEGRADA AO OPERADOR ATIVO
             let meuStatusHtml = '';
-            if (item.status === 'closed_ok' || item.status === 'closed_with_changes') {
+            const logExistente = logsOperacionaisLocais[item.id_envio];
+
+            if (logExistente) {
+                // Se houver clique ou log gravado na sessão
+                const badgeCor = logExistente.tipo === 'Finalizar' ? 'badge-verde' : 'badge-azul';
+                meuStatusHtml = `
+                    <div class="local-status-wrapper">
+                        <span class="badge ${badgeCor}" style="padding: 2px 8px; font-size: 11px; min-width: auto; font-weight:700;">${logExistente.texto}</span>
+                        <div style="font-size: 10px; color: #6b7280; margin-top: 2px; font-weight: 600;">👤 ${logExistente.op} às ${logExistente.hora}</div>
+                    </div>`;
+            } else if (item.status === 'closed_ok' || item.status === 'closed_with_changes') {
                 meuStatusHtml = `
                     <div class="local-status-wrapper">
                         <span class="badge badge-verde" style="padding: 2px 8px; font-size: 11px; min-width: auto; font-weight:700;">Concluído</span>
-                        <div style="font-size: 11px; color: #6b7280; margin-top: 2px; font-weight: 600;">⏱️ Fim: ${horaFormatada}</div>
+                        <div style="font-size: 10px; color: #6b7280; margin-top: 2px; font-weight: 600;">⏱️ Fim: ${horaFormatada}</div>
                     </div>`;
             } else {
                 meuStatusHtml = `
                     <div class="local-status-wrapper">
                         <span class="badge badge-azul" style="padding: 2px 8px; font-size: 11px; min-width: auto; font-weight:700;">Aguardando</span>
-                        <div style="font-size: 11px; color: #6b7280; margin-top: 2px; font-weight: 600;">⏱️ Início: ${horaFormatada}</div>
+                        <div style="font-size: 10px; color: #6b7280; margin-top: 2px; font-weight: 600;">⏱️ Início: ${horaFormatada}</div>
                     </div>`;
             }
 
@@ -250,10 +295,33 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td><span class="galpao-tag">${item.galpao}</span></td>
                 <td><strong>${dataFormatada}</strong> <span style="color:#6b7280; font-size:12px;">${horaFormatada}</span></td>
                 <td class="text-center">
-                    <button class="btn-action">Preparação</button>
-                    <button class="btn-action primary">${item.status === 'closed_with_changes' ? 'Auditar Caixas' : 'Finalizar'}</button>
+                    <button class="btn-action btn-preparar">Preparação</button>
+                    <button class="btn-action primary btn-concluir">${item.status === 'closed_with_changes' ? 'Auditar Caixas' : 'Finalizar'}</button>
                 </td>
             `;
+
+            // 🎯 ESCUTA DE CLIQUES OPERACIONAIS REAIS GRAVANDO QUEM MUDOU O PAINEL
+            tr.querySelector('.btn-preparar').addEventListener('click', () => {
+                logsOperacionaisLocais[item.id_envio] = {
+                    tipo: 'Preparação',
+                    texto: 'Em Preparação',
+                    op: operadorAtivo,
+                    hora: new Date().toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})
+                };
+                recalcularEExibirPagina();
+            });
+
+            tr.querySelector('.btn-concluir').addEventListener('click', (e) => {
+                if (e.target.innerText.includes('Auditar')) return; // Abre auditoria paralela se for quebra
+                logsOperacionaisLocais[item.id_envio] = {
+                    tipo: 'Finalizar',
+                    texto: 'Concluído',
+                    op: operadorAtivo,
+                    hora: new Date().toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})
+                };
+                recalcularEExibirPagina();
+            });
+
             tbodyGeral.appendChild(tr);
         });
     }
@@ -361,5 +429,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('live-clock').innerText = new Date().toLocaleTimeString('pt-BR');
     }, 1000);
 
+    // Arranca verificando se o operador já está logado
+    verificarOperador();
     carregarDadosDoBack();
 });
