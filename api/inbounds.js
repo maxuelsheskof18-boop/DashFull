@@ -22,7 +22,7 @@ module.exports = async (req, res) => {
             const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
             admin.initializeApp({
                 credential: admin.credential.cert(serviceAccount),
-                databaseURL: "https://dashfulll-2321b-default-rtdb.firebaseio.com"
+                databaseURL: "hhttps://dashfulll-2321b-default-rtdb.firebaseio.com"
             });
         }
     } catch (err) {
