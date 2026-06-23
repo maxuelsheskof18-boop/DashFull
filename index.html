@@ -79,6 +79,9 @@
           </select>
           
           <div class="header-meta">
+            <div class="clock" id="display-operador" style="cursor: pointer; background: #e3f2fd; color: #1e88e5; border-color: #bbdefb;" title="Clique para trocar de operador">
+              <i class="fa-solid fa-user-gear"></i> <span id="nome-operador-header">---</span>
+            </div>
             <span class="sync-badge" id="sync-status">Sincronizando...</span>
             <div class="clock" id="live-clock">00:00:00</div>
           </div>
@@ -86,7 +89,6 @@
       </header>
 
       <div id="page-visao-geral" class="page-pane active">
-        
         <section class="analytics-grid">
           <div class="chart-card">
             <h3>Ocupação por Galpão</h3>
@@ -198,8 +200,21 @@
           </div>
         </div>
       </div>
-
     </main>
+  </div>
+
+  <div id="modal-operador" class="modal" aria-hidden="false">
+    <div class="modal-panel" style="width: 420px; text-align: center; padding: 28px; border-radius: 16px;">
+      <div class="kpi-icon icon-blue" style="margin: 0 auto 16px auto; width: 56px; height: 56px; font-size: 24px;">
+        <i class="fa-solid fa-user-shield"></i>
+      </div>
+      <h3 style="font-size: 18px; font-weight: 800;">Identificação do Operador</h3>
+      <p style="font-size: 13px; color: var(--text-muted); margin: 8px 0 20px 0; line-height: 1.4;">
+        Por favor, informe seu nome ou iniciais para registrar o histórico de início e término das preparações das remessas.
+      </p>
+      <input type="text" id="input-nome-operador" placeholder="Ex: Max, Silva, Log..." style="width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; text-align: center; font-weight: 600; outline: none; margin-bottom: 20px; background: #fafafa;">
+      <button id="btn-entrar-painel" class="btn-action primary" style="width: 100%; padding: 12px; font-size: 14px; margin: 0; border-radius: 8px;">Entrar no Sistema</button>
+    </div>
   </div>
 
   <script src="script.js"></script>
