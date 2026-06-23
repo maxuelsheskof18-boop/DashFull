@@ -1,22 +1,9 @@
 const axios = require('axios');
 const admin = require('firebase-admin');
 
-// 🔥 Inicialização segura do Firebase para ambiente Serverless
-if (!admin.apps.length) {
-  // Puxa a credencial de forma dinâmica e segura da memória da Vercel
-  const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-  
-  admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
-    databaseURL: "https://dashfulll-2321b-default-rtdb.firebaseio.com" // Link do seu projeto
-  });
-}
-
-const db = admin.database();
-
 // 🥷 EXPORT OFICIAL DA FUNÇÃO VERCEL
 module.exports = async (req, res) => {
-    // Configuração de cabeçalhos CORS para o seu painel conseguir ler os dados
+    // Configuração de cabeçalhos CORS
     res.setHeader('Access-Control-Allow-Credentials', true);
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,POST');
@@ -26,10 +13,32 @@ module.exports = async (req, res) => {
         return res.status(200).end();
     }
 
+    // 🔒 INICIALIZAÇÃO PROTEGIDA CONTRA CRASHES 500
+    try {
+        if (!admin.apps.length) {
+            if (!process.env.FIREBASE_SERVICE_ACCOUNT) {
+                return res.status(500).json({ error: "ERRO: A variável FIREBASE_SERVICE_ACCOUNT não foi configurada na Vercel." });
+            }
+            
+            // Converte o texto da variável em objeto seguro
+            const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+            
+            admin.initializeApp({
+                credential: admin.credential.cert(serviceAccount),
+                databaseURL: "https://dashfulll-2321b-default-rtdb.firebaseio.com"
+            });
+        }
+    } catch (erroFiresbaseInit) {
+        return res.status(500).json({ 
+            error: "ERRO NO CONTEÚDO DA VARIÁVEL DO FIREBASE", 
+            details: erroFiresbaseInit.message 
+        });
+    }
+
     let todosOsEnvios = [];
 
     try {
-        // 🔄 Procura a lista de cookies atualizada direto no seu Firebase
+        const db = admin.database();
         const snapshot = await db.ref('config_contas').once('value');
         const contasDoBanco = snapshot.val();
         
@@ -80,10 +89,9 @@ module.exports = async (req, res) => {
             }
         }
     } catch (erroBanco) {
-        return res.status(500).json({ error: erroBanco.message });
+        return res.status(500).json({ error: "Erro ao ler Realtime Database", details: erroBanco.message });
     }
 
-    // Ordena por data e devolve o JSON puro
     const ordenados = todosOsEnvios.sort((a, b) => new Date(b.data) - new Date(a.data));
     return res.status(200).json(ordenados);
 };
