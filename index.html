@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DashFull - Centro de Comando Multi-Contas</title>
+  
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <div class="app-layout">
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-brand">
+        <div class="brand-info">
+          <i class="fa-solid fa-cube logo-icon"></i>
+          <h2>DashFull</h2>
+        </div>
+        <button id="btn-toggle-sidebar" class="btn-sidebar-toggle" title="Recolher Menu">
+          <i class="fa-solid fa-chevron-left" id="toggle-icon"></i>
+        </button>
+      </div>
+      <ul class="sidebar-menu">
+        <li class="menu-item active" data-page="visao-geral">
+          <i class="fa-solid fa-chart-pie"></i> <span>Visão Geral</span>
+        </li>
+        <li class="menu-item" data-page="pendencias">
+          <i class="fa-solid fa-triangle-exclamation"></i> <span>Pendências</span>
+          <span id="badge-pendencias-nav" class="nav-badge">0</span>
+        </li>
+        <li class="menu-item" data-page="auditoria">
+          <i class="fa-solid fa-magnifying-glass-list"></i> <span>Auditoria</span>
+        </li>
+        <li class="menu-item" data-page="configuracoes">
+          <i class="fa-solid fa-gear"></i> <span>Configurações</span>
+        </li>
+      </ul>
+      <div class="sidebar-footer">
+        <span class="dot-online"></span> <span class="footer-text">Sistema Conectado</span>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      
+      <header class="main-header">
+        <div class="header-info">
+          <h1 id="header-title">Painel de Controle</h1>
+          <p id="header-subtitle">Monitoramento de envios em tempo real</p>
+        </div>
+        
+        <div class="header-controls">
+          <div class="search-box">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            <input type="text" id="busca-id" placeholder="Buscar ID ou SKU...">
+          </div>
+          
+          <select id="filtro-conta" class="header-select">
+            <option value="Todas">Todas as Contas</option>
+            <option value="EHF Distribuidora">EHF Distribuidora</option>
+            <option value="EHF Comercio">EHF Comercio</option>
+            <option value="EHF Suprimentos">EHF Suprimentos</option>
+            <option value="EKN">EKN</option>
+          </select>
+
+          <select id="filtro-galpao" class="header-select">
+            <option value="Todos">Todos os Galpões</option>
+            <option value="Araçariguama">Araçariguama</option>
+            <option value="Perus">Perus</option>
+          </select>
+
+          <select id="ordenar-data" class="header-select">
+            <option value="recente">Data (Mais Recente)</option>
+            <option value="antiga">Data (Mais Antiga)</option>
+          </select>
+          
+          <div class="header-meta">
+            <span class="sync-badge" id="sync-status">Sincronizando...</span>
+            <div class="clock" id="live-clock">00:00:00</div>
+          </div>
+        </div>
+      </header>
+
+      <div id="page-visao-geral" class="page-pane active">
+        
+        <section class="analytics-grid">
+          <div class="chart-card">
+            <h3>Ocupação por Galpão</h3>
+            <div class="chart-wrapper">
+              <canvas id="chart-galpoes"></canvas>
+            </div>
+          </div>
+          <div class="chart-card">
+            <h3>Geral Declarado vs Recebido (Volumetria Total)</h3>
+            <div class="chart-wrapper">
+              <canvas id="chart-divergencias"></canvas>
+            </div>
+          </div>
+        </section>
+
+        <section class="kpi-row">
+          <div class="kpi-card">
+            <div class="kpi-icon icon-blue"><i class="fa-solid fa-truck-ramp-box"></i></div>
+            <div class="kpi-data">
+              <small>Total de Envios</small>
+              <h2 id="total-envios">0</h2>
+            </div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-icon icon-yellow"><i class="fa-solid fa-boxes-stacked"></i></div>
+            <div class="kpi-data">
+              <small>Total Declarado</small>
+              <h2 id="total-declarado">0</h2>
+            </div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-icon icon-green"><i class="fa-solid fa-box-circle-check"></i></div>
+            <div class="kpi-data">
+              <small>Aptas para o Full</small>
+              <h2 id="total-recebido">0</h2>
+            </div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-icon icon-red"><i class="fa-solid fa-percent"></i></div>
+            <div class="kpi-data">
+              <small>Taxa Discrepância</small>
+              <h2 id="taxa-discrepancia">0%</h2>
+            </div>
+          </div>
+        </section>
+
+        <div class="pills-bar">
+          <button class="pill active" data-status="Todos">Todos <span id="count-todos">(0)</span></button>
+          <button class="pill" data-status="closed_ok">Finalizados <span id="count-finalizados">(0)</span></button>
+          <button class="pill" data-status="closed_with_changes">Com Divergência <span id="count-divergencias">(0)</span></button>
+          <button class="pill" data-status="pending">Agendados <span id="count-agendados">(0)</span></button>
+        </div>
+
+        <div class="panel-card">
+          <div class="panel-card-header">
+            <h3>Listagem de Remessas em Tempo Real</h3>
+          </div>
+          <div class="table-responsive">
+            <table class="premium-table">
+              <thead>
+                <tr>
+                  <th>Conta</th>
+                  <th>ID Envio</th>
+                  <th>Status ML</th>
+                  <th>Meu Status</th>
+                  <th>Unidades <small>Declaradas / Recebidas</small></th>
+                  <th>Galpão</th>
+                  <th>Data Reservada</th>
+                  <th class="text-center">Ações Operacionais</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-geral">
+                </tbody>
+            </table>
+          </div>
+
+          <div class="pagination-footer">
+            <span class="pagination-info" id="paginacao-info">Exibindo 0-0 de 0 envios</span>
+            <div class="pagination-buttons" id="paginacao-botoes">
+              </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="page-pendencias" class="page-pane">
+        <div class="alert-box-warning">
+          <i class="fa-solid fa-circle-exclamation"></i>
+          <div>
+            <h4>Atenção Operacional Requerida</h4>
+            <p>Os envios listados abaixo foram encerrados pelo Mercado Livre com divergências entre a nota fiscal e as peças bipadas.</p>
+          </div>
+        </div>
+        <div class="panel-card">
+          <div class="table-responsive">
+            <table class="premium-table">
+              <thead>
+                <tr>
+                  <th>Conta</th>
+                  <th>ID Envio</th>
+                  <th>Inconformidade</th>
+                  <th>Quebra Logística</th>
+                  <th>Galpão</th>
+                  <th class="text-center">Ação Corretiva</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-pendencias">
+                </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
