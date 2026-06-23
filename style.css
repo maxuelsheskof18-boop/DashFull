@@ -141,3 +141,114 @@ body { background-color: var(--bg-app); color: var(--text-dark); height: 100vh; 
 .alert-box-warning i { font-size: 20px; color: var(--warning); }
 .alert-box-warning h4 { font-size: 14px; font-weight: 700; color: #92400e; }
 .alert-box-warning p { font-size: 13px; color: #b45309; margin-top: 2px; }
+/* ==========================================================================
+   📱 ULTRA RESPONSIVIDADE (MEDIA QUERIES) - DASHFULL PREMIUM
+   ========================================================================== */
+
+/* 💻 1. Notebooks e Monitores Menores (Ajuste de Gráficos) */
+@media (max-width: 1200px) {
+  .analytics-grid {
+    grid-template-columns: 1fr; /* Gráficos ficam um embaixo do outro */
+  }
+  .chart-wrapper {
+    height: 200px; /* Dá mais altura útil para os gráficos respirarem */
+  }
+}
+
+/* 📐 2. Tablets (Ajuste de Cards e Controles) */
+@media (max-width: 1024px) {
+  .kpi-row {
+    grid-template-columns: repeat(2, 1fr); /* KPIs viram matriz 2x2 elegante */
+  }
+  .header-controls {
+    gap: 10px;
+  }
+  .search-box input {
+    width: 160px;
+  }
+}
+
+/* 📱 3. Smartphones (Foco Total em Telas de Celular) */
+@media (max-width: 768px) {
+  /* 📊 Força a Sidebar a virar uma barra de ícones compacta na esquerda */
+  .sidebar {
+    width: 70px !important;
+  }
+  .sidebar .sidebar-brand h2, 
+  .sidebar .sidebar-menu .menu-item span,
+  .sidebar .nav-badge,
+  .sidebar .sidebar-footer .footer-text {
+    display: none !important; /* Esconde os textos para dar espaço útil */
+  }
+  .sidebar .logo-icon {
+    margin-right: 0 !important;
+  }
+  .sidebar .sidebar-brand {
+    padding: 0 0 20px 0 !important;
+    justify-content: center !important;
+  }
+  .sidebar .btn-sidebar-toggle {
+    display: none !important; /* Remove o botão de seta física no mobile */
+  }
+
+  /* 🚀 Ajustes da Área de Conteúdo */
+  .main-content {
+    padding: 16px !important; /* Margem mais fina para sobrar espaço */
+    gap: 16px !important;
+  }
+
+  /* Empilhamento inteligente do Cabeçalho e Filtros */
+  .main-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 14px;
+  }
+  .header-controls {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .search-box input {
+    width: 100% !important; /* Input de busca ocupa a largura total */
+  }
+  .header-select {
+    width: 100%; /* Seletores de conta e galpão ocupam a linha inteira */
+  }
+  .header-meta {
+    justify-content: space-between;
+    width: 100%;
+    margin-top: 4px;
+  }
+
+  /* KPIs em lista vertical */
+  .kpi-row {
+    grid-template-columns: 1fr; /* Um card por linha para leitura rápida */
+  }
+
+  /* 🎛️ Scroll de dedo horizontal nas abas rápidas (Pills) */
+  .pills-bar {
+    overflow-x: auto; /* Permite arrastar os filtros pro lado se a tela for estreita */
+    white-space: nowrap;
+    padding-bottom: 8px;
+  }
+  .pills-bar::-webkit-scrollbar {
+    height: 4px; /* Barra de rolagem super fina e discreta */
+  }
+  .pills-bar::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 4px;
+  }
+  .pill {
+    padding: 6px 14px;
+    font-size: 12px;
+    flex-shrink: 0; /* Impede os botões de esmagarem o texto */
+  }
+
+  /* Ajuste Fino na Paginação do Rodapé */
+  .pagination-footer {
+    flex-direction: column;
+    text-align: center;
+    gap: 12px;
+  }
+}
