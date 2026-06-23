@@ -3,7 +3,7 @@ const admin = require('firebase-admin');
 
 // 🥷 EXPORT OFICIAL DA FUNÇÃO VERCEL
 module.exports = async (req, res) => {
-    // Configuração de cabeçalhos CORS
+    // Configuração de cabeçalhos CORS para a nuvem
     res.setHeader('Access-Control-Allow-Credentials', true);
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,POST');
@@ -13,29 +13,21 @@ module.exports = async (req, res) => {
         return res.status(200).end();
     }
 
-    // 🔒 INICIALIZAÇÃO PROTEGIDA CONTRA CRASHES 500
+    // 🔒 INICIALIZAÇÃO DO FIREBASE
     try {
         if (!admin.apps.length) {
             if (!process.env.FIREBASE_SERVICE_ACCOUNT) {
-                return res.status(500).json({ error: "ERRO: A variável FIREBASE_SERVICE_ACCOUNT não foi configurada na Vercel." });
+                return res.status(500).json({ error: "Variável FIREBASE_SERVICE_ACCOUNT ausente na Vercel." });
             }
-            
-            // Converte o texto da variável em objeto seguro
             const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-            
             admin.initializeApp({
                 credential: admin.credential.cert(serviceAccount),
                 databaseURL: "https://dashfulll-2321b-default-rtdb.firebaseio.com"
             });
         }
-    } catch (erroFiresbaseInit) {
-        return res.status(500).json({ 
-            error: "ERRO NO CONTEÚDO DA VARIÁVEL DO FIREBASE", 
-            details: erroFiresbaseInit.message 
-        });
+    } catch (err) {
+        return res.status(500).json({ error: "Erro ao inicializar Firebase", details: err.message });
     }
-
-    let todosOsEnvios = [];
 
     try {
         const db = admin.database();
@@ -48,10 +40,11 @@ module.exports = async (req, res) => {
 
         const listaContas = Object.values(contasDoBanco);
 
-        for (const conta of listaContas) {
+        // ⚡ RESOLUÇÃO DO TIMEOUT: Consulta as 4 APIs do Mercado Livre EM PARALELO de uma vez só
+        const promessas = listaContas.map(async (conta) => {
             try {
                 const urlNavegador = `https://myaccount.mercadolivre.com.br/api/shipping/inbounds/search?limit=30&offset=0`;
-
+                
                 const resposta = await axios.get(urlNavegador, {
                     maxRedirects: 0,
                     validateStatus: (status) => status >= 200 && status < 303,
@@ -65,33 +58,32 @@ module.exports = async (req, res) => {
 
                 const bruto = resposta.data.results || resposta.data.data || [];
                 
-                const enviosFormatados = bruto.map(envio => {
-                    const declaradas = envio.products_count || 0; 
-                    const recebidas = envio.on_sale_units || 0;   
-                    const dataReservada = envio.appointment && envio.appointment.date ? envio.appointment.date : (envio.date_created || new Date().toISOString());
+                return bruto.map(envio => {
                     const mapaGalpoes = { 'BRSP06': 'Araçariguama', 'BRRC01': 'Perus' };
-
                     return {
                         conta: conta.nome,
                         id_envio: envio.id || envio.inbound_id,
                         status: envio.status || 'unknown',
-                        unidades_declaradas: declaradas,
-                        unidades_recebidas: recebidas,
+                        unidades_declaradas: envio.products_count || 0,
+                        unidades_recebidas: envio.on_sale_units || 0,
                         galpao: mapaGalpoes[envio.logistic_center_id] || envio.logistic_center_id || '---',
-                        data: dataReservada
+                        data: envio.appointment && envio.appointment.date ? envio.appointment.date : (envio.date_created || new Date().toISOString())
                     };
                 });
-
-                todosOsEnvios = todosOsEnvios.concat(enviosFormatados);
-
-            } catch (erro) {
-                console.error(`❌ Erro na API da conta [${conta.nome}]:`, erro.message);
+            } catch (erroApi) {
+                console.error(`❌ Erro na conta [${conta.nome}]:`, erroApi.message);
+                return []; // Se uma conta falhar ou expirar o cookie, retorna vazio e não quebra as outras!
             }
-        }
-    } catch (erroBanco) {
-        return res.status(500).json({ error: "Erro ao ler Realtime Database", details: erroBanco.message });
-    }
+        });
 
-    const ordenados = todosOsEnvios.sort((a, b) => new Date(b.data) - new Date(a.data));
-    return res.status(200).json(ordenados);
+        // Aguarda todas as contas responderem juntas
+        const resultados = await Promise.all(promessas);
+        const todosOsEnvios = resultados.flat(); // Junta os arrays de envios em um só
+
+        const ordenados = todosOsEnvios.sort((a, b) => new Date(b.data) - new Date(a.data));
+        return res.status(200).json(ordenados);
+
+    } catch (erroBanco) {
+        return res.status(500).json({ error: "Erro operacional no banco de dados", details: erroBanco.message });
+    }
 };
