@@ -124,19 +124,45 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // 📡 CAPTURA DE DADOS DO BACK-END (PORTA 3000)
-    // 📡 CAPTURA DE DADOS DINÂMICA (COMPATÍVEL COM LOCALHOST E VERCEL)
+  // 📡 CAPTURA DE DADOS DINÂMICA (ATUALIZADA COM TRATAMENTO DE ERROS 500)
     async function carregarDadosDoBack() {
         try {
-            // Rota relativa: aponta para /api/inbounds automaticamente na nuvem
             const res = await fetch('/api/inbounds'); 
             const data = await res.json();
-            dadosLocais = data;
 
+            // 🎯 CAPTURA O ERRO REAL: Se o back-end devolveu um objeto de erro em vez da lista
+            if (data && data.error) {
+                console.error("❌ Falha operacional reportada pela nuvem:", data.error, data.details);
+                
+                document.getElementById('sync-status').innerText = 'Erro na Nuvem';
+                document.getElementById('sync-status').style.backgroundColor = '#fee2e2';
+                document.getElementById('sync-status').style.color = '#ef4444';
+                
+                // Injeta o motivo real do erro direto no meio da tabela para você ler
+                tbodyGeral.innerHTML = `
+                    <tr>
+                        <td colspan="8" style="text-align:center; padding: 40px; color: var(--danger);">
+                            <i class="fa-solid fa-triangle-exclamation" style="font-size: 26px; margin-bottom: 10px;"></i>
+                            <h4 style="font-weight: 800; font-size: 16px;">Erro Interno do Servidor (Nuvem Vercel)</h4>
+                            <p style="font-size: 13px; color: #4b5563; margin-top: 6px;"><strong>Motivo:</strong> ${data.error}</p>
+                            <small style="color: #6b7280; display: block; margin-top: 4px; font-family: monospace; background: #f3f4f6; padding: 6px; border-radius: 4px;">${data.details || 'Sem detalhes adicionais'}</small>
+                        </td>
+                    </tr>`;
+                return; // Para a execução aqui para não travar o restante do layout
+            }
+
+            // Garante que o dado recebido é de fato uma lista antes de prosseguir
+            if (!Array.isArray(data)) {
+                throw new Error("O formato recebido da nuvem não é uma lista de envios válida.");
+            }
+
+            dadosLocais = data;
             atualizarPainelCompleto();
 
             document.getElementById('sync-status').innerText = 'Sincronização completa!';
             document.getElementById('sync-status').style.backgroundColor = '#e6f6ee';
             document.getElementById('sync-status').style.color = '#0f9d58';
+
         } catch (err) {
             console.error("Erro ao conectar à API local:", err);
             document.getElementById('sync-status').innerText = 'Erro de conexão';
