@@ -120,8 +120,15 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // 📡 CAPTURA DE DADOS DO FIREBASE EM TEMPO REAL
+    // 📡 CAPTURA INICIAL DE DADOS DO FIREBASE
     async function carregarDadosDoBack() {
+        const statusBadge = document.getElementById('sync-status');
+        if (statusBadge) {
+            statusBadge.innerText = 'Sincronizando...';
+            statusBadge.style.backgroundColor = '#fef3c7';
+            statusBadge.style.color = '#d97706';
+        }
+
         try {
             const res = await fetch('https://dashfulll-2321b-default-rtdb.firebaseio.com/historico_envios.json'); 
             const data = await res.json();
@@ -132,25 +139,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            // Converte objeto do Firebase para Array
             const listaFormatada = Object.keys(data).map(id => data[id]);
-
-            // Ordena do mais recente para o mais antigo
             listaFormatada.sort((a, b) => new Date(b.data) - new Date(a.data));
 
             dadosLocais = listaFormatada;
             atualizarPainelCompleto();
 
-            const statusBadge = document.getElementById('sync-status');
             if (statusBadge) {
                 statusBadge.innerText = 'Sincronização completa!';
                 statusBadge.style.backgroundColor = '#e6f6ee';
                 statusBadge.style.color = '#0f9d58';
             }
-
         } catch (err) {
             console.error("Erro ao conectar ao Firebase:", err);
-            const statusBadge = document.getElementById('sync-status');
             if (statusBadge) {
                 statusBadge.innerText = 'Erro de conexão';
                 statusBadge.style.backgroundColor = '#fee2e2';
@@ -159,33 +160,64 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // ⚡ FUNÇÃO GLOBAL PARA ATUALIZAR STATUS NO FIREBASE (REPLICA PARA TODOS)
-    window.alterarStatusEnvio = async function(idEnvio, novoStatus) {
+    // 🕵️ MOTOR DE SINCRONIZAÇÃO SILENCIOSA (TEMPO REAL SEM PISCAR A TELA)
+    async function carregarDadosSilent() {
+        try {
+            const res = await fetch('https://dashfulll-2321b-default-rtdb.firebaseio.com/historico_envios.json'); 
+            const data = await res.json();
+            if (!data) return;
+
+            const listaFormatada = Object.keys(data).map(id => data[id]);
+            listaFormatada.sort((a, b) => new Date(b.data) - new Date(a.data));
+
+            // Atualiza a tela APENAS se houver mudanças nos dados (evita lags)
+            if (JSON.stringify(dadosLocais) !== JSON.stringify(listaFormatada)) {
+                dadosLocais = listaFormatada;
+                atualizarPainelCompleto();
+            }
+        } catch (err) {
+            // Falha silenciosamente nos bastidores se a internet oscilar
+        }
+    }
+
+    // Checa alterações feitas por outros operadores a cada 3 segundos
+    setInterval(carregarDadosSilent, 3000);
+
+    // ⚡ AÇÃO DOS BOTÕES: GRAVA NO FIREBASE QUEM FEZ E A HORA
+    window.acionarBotao = async function(idEnvio, novoStatus) {
         const statusBadge = document.getElementById('sync-status');
         if (statusBadge) {
-            statusBadge.innerText = 'A atualizar na nuvem...';
+            statusBadge.innerText = 'Salvando...';
             statusBadge.style.backgroundColor = '#fef3c7';
             statusBadge.style.color = '#d97706';
         }
 
         const url = `https://dashfulll-2321b-default-rtdb.firebaseio.com/historico_envios/${idEnvio}.json`;
+        const horaAtual = new Date().toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'});
+
+        // Monta o pacote de dados do clique
+        const payload = {
+            meu_status: novoStatus,
+            operador: operadorAtivo || 'Operador',
+            hora_operacao: horaAtual
+        };
 
         try {
             const res = await fetch(url, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ meu_status: novoStatus })
+                body: JSON.stringify(payload)
             });
 
-            if (!res.ok) throw new Error('Falha na resposta do servidor');
-
-            console.log(`✅ Envio ${idEnvio} atualizado com sucesso para: ${novoStatus}`);
+            if (!res.ok) throw new Error('Falha no Firebase');
+            
+            // Força a tela a atualizar na mesma hora
             await carregarDadosDoBack();
 
         } catch (erro) {
-            console.error("❌ Erro ao sincronizar a ação do operador:", erro);
+            console.error("Erro ao salvar status:", erro);
             if (statusBadge) {
-                statusBadge.innerText = 'Erro ao sincronizar';
+                statusBadge.innerText = 'Erro ao salvar';
                 statusBadge.style.backgroundColor = '#fee2e2';
                 statusBadge.style.color = '#ef4444';
             }
@@ -284,7 +316,7 @@ document.addEventListener('DOMContentLoaded', () => {
         paginacaoBotoes.appendChild(btnAvancar);
     }
 
-    // 📋 RENDER: VISÃO GERAL (INTEGRADO COM FIREBASE E DROPDOWN)
+    // 📋 RENDER: VISÃO GERAL (RESTAUROU BOTÕES E ASSINATURA DO OPERADOR)
     function renderizarTabelaGeral(envios) {
         if (!tbodyGeral) return;
         tbodyGeral.innerHTML = '';
@@ -294,55 +326,67 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        envios.forEach(envio => {
-            // Definições de Cores para o Status Interno (Firebase)
-            const statusHumano = envio.meu_status || 'Pendente';
-            let corBadge = '#6b7280'; 
-            if (statusHumano === 'Finalizado') corBadge = '#10b981'; 
-            if (statusHumano === 'Com Divergência') corBadge = '#ef4444'; 
-            if (statusHumano === 'Agendado') corBadge = '#3b82f6'; 
-
-            // Definições de Cores para o Status Original do ML
+        envios.forEach(item => {
+            // Status ML
             let statusLabel = 'Agendado';
             let statusClass = 'badge-azul';
-            if (envio.status === 'closed_ok') { statusLabel = 'Finalizado'; statusClass = 'badge-verde'; }
-            else if (envio.status === 'closed_with_changes') { statusLabel = 'Divergência'; statusClass = 'badge-laranja'; }
-            else if (envio.status === 'expired') { statusLabel = 'Expirado'; statusClass = 'badge-vermelho'; }
-            else if (envio.status === 'cancelled') { statusLabel = 'Cancelado'; statusClass = 'badge-vermelho'; }
+            if (item.status === 'closed_ok') { statusLabel = 'Finalizado'; statusClass = 'badge-verde'; }
+            else if (item.status === 'closed_with_changes') { statusLabel = 'Divergência'; statusClass = 'badge-laranja'; }
+            else if (item.status === 'expired') { statusLabel = 'Expirado'; statusClass = 'badge-vermelho'; }
+            else if (item.status === 'cancelled') { statusLabel = 'Cancelado'; statusClass = 'badge-vermelho'; }
 
             // Datas e Volumes
-            const dataObjeto = new Date(envio.data);
+            const dataObjeto = new Date(item.data);
             const dataFormatada = dataObjeto.toLocaleDateString('pt-BR');
             const horaFormatada = dataObjeto.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
-            const temQuebra = envio.unidades_recebidas < envio.unidades_declaradas;
+            const temQuebra = item.unidades_recebidas < item.unidades_declaradas;
             const unidadesHtml = temQuebra 
-                ? `<span class="texto-danger"><strong>${envio.unidades_declaradas}</strong> / ${envio.unidades_recebidas} <i class="fa-solid fa-triangle-exclamation"></i></span>`
-                : `<strong>${envio.unidades_declaradas}</strong> / ${envio.unidades_recebidas}`;
+                ? `<span class="texto-danger"><strong>${item.unidades_declaradas}</strong> / ${item.unidades_recebidas} <i class="fa-solid fa-triangle-exclamation"></i></span>`
+                : `<strong>${item.unidades_declaradas}</strong> / ${item.unidades_recebidas}`;
+
+            // Lógica do Status Interno (Baseado no Firebase)
+            let meuStatusHtml = '';
+            const statusHumano = item.meu_status; // "Em Preparação", "Concluído", etc.
+
+            if (statusHumano === 'Concluído') {
+                meuStatusHtml = `
+                    <div class="local-status-wrapper">
+                        <span class="badge badge-verde" style="padding: 2px 8px; font-size: 11px; font-weight:700;">Concluído</span>
+                        <div style="font-size: 10px; color: #6b7280; margin-top: 2px; font-weight: 600;">👤 ${item.operador} às ${item.hora_operacao}</div>
+                    </div>`;
+            } else if (statusHumano === 'Em Preparação') {
+                meuStatusHtml = `
+                    <div class="local-status-wrapper">
+                        <span class="badge badge-laranja" style="padding: 2px 8px; font-size: 11px; font-weight:700;">Em Preparação</span>
+                        <div style="font-size: 10px; color: #6b7280; margin-top: 2px; font-weight: 600;">👤 ${item.operador} às ${item.hora_operacao}</div>
+                    </div>`;
+            } else {
+                 meuStatusHtml = `
+                    <div class="local-status-wrapper">
+                        <span class="badge badge-azul" style="padding: 2px 8px; font-size: 11px; font-weight:700;">Pendente</span>
+                        <div style="font-size: 10px; color: #6b7280; margin-top: 2px; font-weight: 600;">⏱️ Aguardando Início</div>
+                    </div>`;
+            }
+
+            // Define o texto do botão Finalizar/Auditar com base no status do ML
+            let textBtnConcluir = item.status === 'closed_with_changes' ? 'Auditar Caixas' : 'Finalizar';
 
             const tr = document.createElement('tr');
             tr.innerHTML = `
-                <td><strong>${envio.conta}</strong></td>
-                <td>#${envio.id_envio}</td>
+                <td><strong>${item.conta}</strong></td>
+                <td>#${item.id_envio}</td>
                 <td><span class="status-badge ${statusClass}">${statusLabel}</span></td>
                 
-                <td>
-                    <span style="background-color: ${corBadge}; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold;">
-                        ${statusHumano}
-                    </span>
-                </td>
+                <td>${meuStatusHtml}</td>
                 
                 <td>${unidadesHtml}</td>
-                <td><span class="galpao-tag">${envio.galpao}</span></td>
+                <td><span class="galpao-tag">${item.galpao}</span></td>
                 <td><strong>${dataFormatada}</strong> <span style="color:#6b7280; font-size:12px;">${horaFormatada}</span></td>
                 
                 <td class="text-center">
-                    <select onchange="window.alterarStatusEnvio('${envio.id_envio}', this.value)" style="padding: 4px; border-radius: 4px; border: 1px solid #d1d5db; font-size: 13px; cursor: pointer; outline: none;">
-                        <option value="Pendente" ${statusHumano === 'Pendente' ? 'selected' : ''}>⏳ Pendente</option>
-                        <option value="Agendado" ${statusHumano === 'Agendado' ? 'selected' : ''}>📅 Agendado</option>
-                        <option value="Finalizado" ${statusHumano === 'Finalizado' ? 'selected' : ''}>✅ Finalizado</option>
-                        <option value="Com Divergência" ${statusHumano === 'Com Divergência' ? 'selected' : ''}>⚠️ Com Divergência</option>
-                    </select>
+                    <button class="btn-action btn-preparar" onclick="window.acionarBotao('${item.id_envio}', 'Em Preparação')">Preparação</button>
+                    <button class="btn-action primary btn-concluir" onclick="window.acionarBotao('${item.id_envio}', 'Concluído')">${textBtnConcluir}</button>
                 </td>
             `;
             tbodyGeral.appendChild(tr);
