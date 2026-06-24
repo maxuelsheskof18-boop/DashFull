@@ -252,3 +252,95 @@ body { background-color: var(--bg-app); color: var(--text-dark); height: 100vh; 
     gap: 12px;
   }
 }
+/* =========================================================
+   🪟 1. TELA DO OPERADOR CENTRALIZADA (MODAL)
+========================================================= */
+#modal-operador {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    background-color: rgba(0, 0, 0, 0.85) !important; /* Fundo escurecido */
+    display: flex; /* O JS muda para 'none' quando ele loga */
+    justify-content: center !important;
+    align-items: center !important;
+    z-index: 99999 !important; /* Força a ficar por cima de tudo no site */
+    backdrop-filter: blur(4px); /* Dá um efeito de desfoque chique no fundo */
+}
+
+/* Aplica o formato de cartão branco ao redor do input e botão */
+#modal-operador > div {
+    background: #ffffff;
+    padding: 30px;
+    border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    width: 90%;
+    max-width: 400px;
+    text-align: center;
+    animation: popIn 0.3s ease-out;
+}
+
+@keyframes popIn {
+    0% { transform: scale(0.9); opacity: 0; }
+    100% { transform: scale(1); opacity: 1; }
+}
+
+/* =========================================================
+   📱 2. RESPONSIVIDADE TOTAL (CELULARES E TABLETS MINIMIZADOS)
+========================================================= */
+@media (max-width: 768px) {
+    
+    /* Empilha os Cards de KPI (Envios, Declarado, etc) um em cima do outro */
+    .kpi-container,
+    .cards-wrapper,
+    .dashboard-cards {
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 15px !important;
+    }
+
+    /* Empilha os Filtros de Busca para não espremer a tela */
+    .filtros-container,
+    .filters-bar {
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 10px !important;
+    }
+
+    .filtros-container input,
+    .filtros-container select {
+        width: 100% !important; /* Estica os filtros de ponta a ponta */
+    }
+
+    /* Cria uma rolagem lateral exclusiva para a tabela */
+    /* Isso impede que a tabela quebre o site no celular */
+    .table-responsive,
+    .table-container,
+    .tabela-wrapper {
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+        width: 100% !important;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+    }
+
+    /* Reduz um pouco o tamanho da fonte na tabela para caber mais */
+    table {
+        font-size: 13px !important;
+        white-space: nowrap !important; /* Impede que o texto pule de linha */
+    }
+
+    /* Ajusta a barra de Pills (Todos, Finalizados, Agendados) */
+    .pills-bar {
+        overflow-x: auto !important;
+        white-space: nowrap !important;
+        padding-bottom: 5px;
+    }
+
+    /* Empilha os gráficos para não ficarem minúsculos */
+    .charts-container {
+        display: flex !important;
+        flex-direction: column !important;
+    }
+}
