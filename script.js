@@ -141,7 +141,55 @@ document.addEventListener('DOMContentLoaded', () => {
 
         renderizarGraficosDinâmicos(dadosLocais);
     }
+// 📋 EXEMPLO DE COMO DEVE FICAR O MAPA DE LINHAS NA SUA FUNÇÃO DE RENDERIZAR
+function renderizarLinhasTabela(envios) {
+    const tbodyGeral = document.getElementById('tbody-geral'); // Ajusta para o ID do teu tbody
+    tbodyGeral.innerHTML = '';
 
+    if (envios.length === 0) {
+        tbodyGeral.innerHTML = '<tr><td colspan="8" style="text-align:center;">Nenhum envio localizado.</td></tr>';
+        return;
+    }
+
+    envios.forEach(envio => {
+        // Se o Firebase ainda não tiver um status humano, define como 'Pendente' por padrão
+        const statusHumano = envio.meu_status || 'Pendente';
+        
+        // Define cores diferentes para cada status interno no painel
+        let corBadge = '#6b7280'; // Cinzento para pendente
+        if (statusHumano === 'Finalizado') corBadge = '#10b981'; // Verde
+        if (statusHumano === 'Com Divergência') corBadge = '#ef4444'; // Vermelho
+        if (statusHumano === 'Agendado') corBadge = '#3b82f6'; // Azul
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>${envio.conta}</td>
+            <td><strong>${envio.id_envio}</strong></td>
+            <td><span class="badge-ml">${envio.status}</span></td>
+            
+            <td>
+                <span style="background-color: ${corBadge}; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold;">
+                    ${statusHumano}
+                </span>
+            </td>
+            
+            <td>${envio.unidades_declaradas} / ${envio.unidades_recebidas}</td>
+            <td>${envio.galpao}</td>
+            <td>${new Date(envio.data).toLocaleString('pt-PT')}</td>
+            
+            <td>
+                <select onchange="alterarStatusEnvio('${envio.id_envio}', this.value)" style="padding: 4px; border-radius: 4px; border: 1px solid #d1d5db; font-size: 13px;">
+                    <option value="">Alterar status...</option>
+                    <option value="Pendente" ${statusHumano === 'Pendente' ? 'selected' : ''}>Pendente</option>
+                    <option value="Agendado" ${statusHumano === 'Agendado' ? 'selected' : ''}>Agendado</option>
+                    <option value="Finalizado" ${statusHumano === 'Finalizado' ? 'selected' : ''}>Finalizado</option>
+                    <option value="Com Divergência" ${statusHumano === 'Com Divergência' ? 'selected' : ''}>Com Divergência</option>
+                </select>
+            </td>
+        `;
+        tbodyGeral.appendChild(tr);
+    });
+}
     // 🔍 ENGINE DE FILTRAGEM AVANÇADA COMBINADA + ORDENAÇÃO
     function filtrarEProcessarDados() {
         const query = buscaId.value.trim().toLowerCase();
@@ -420,3 +468,37 @@ document.addEventListener('DOMContentLoaded', () => {
     verificarOperador();
     carregarDadosDoBack();
 });
+// ⚡ FUNÇÃO PARA O OPERADOR ATUALIZAR O STATUS NO FIREBASE (REPLICA PARA TODOS)
+async function alterarStatusEnvio(idEnvio, novoStatus) {
+    // Exibe o status de "Sincronizando..." no painel superior
+    const statusBadge = document.getElementById('sync-status');
+    statusBadge.innerText = 'A atualizar na nuvem...';
+    statusBadge.style.backgroundColor = '#fef3c7';
+    statusBadge.style.color = '#d97706';
+
+    const url = `https://dashfulll-2321b-default-rtdb.firebaseio.com/historico_envios/${idEnvio}.json`;
+
+    try {
+        // O método PATCH atualiza apenas o campo 'meu_status' sem apagar os dados do Mercado Livre
+        const res = await fetch(url, {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ meu_status: novoStatus })
+        });
+
+        if (!res.ok) throw new Error('Falha na resposta do servidor');
+
+        console.log(`✅ Envio ${idEnvio} atualizado com sucesso para: ${novoStatus}`);
+        
+        // 🔥 Recarrega os dados imediatamente para atualizar o ecrã do operador atual
+        await carregarDadosDoBack();
+
+    } catch (erro) {
+        console.error("❌ Erro ao sincronizar a ação do operador:", erro);
+        statusBadge.innerText = 'Erro ao sincronizar';
+        statusBadge.style.backgroundColor = '#fee2e2';
+        statusBadge.style.color = '#ef4444';
+    }
+}
