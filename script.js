@@ -40,9 +40,6 @@ document.addEventListener('DOMContentLoaded', () => {
     let dadosFiltradosAtuais = [];
     let statusPillAtivo = 'Todos';
     let operadorAtivo = '';
-    
-    // Objeto temporário para guardar logs na sessão (Simulando persistência do Firebase)
-    let logsOperacionaisLocais = {};
 
     // Configurações de Paginação (30 itens por página)
     let paginaAtual = 1;
@@ -52,20 +49,22 @@ document.addEventListener('DOMContentLoaded', () => {
     let chartInstanceGalpao = null;
     let chartInstanceDivergencia = null;
 
-    // 🪟 CONTROLE DETECTORD OPERADOR (ENTRADA SEGURA)
+    // 🪟 CONTROLE DO OPERADOR (ENTRADA SEGURA)
     function verificarOperador() {
         const salvo = localStorage.getItem('dashfull_operador');
         if (salvo && salvo.trim() !== '') {
             operadorAtivo = salvo;
             nomeOperadorHeader.innerText = operadorAtivo;
             modalOperador.setAttribute('aria-hidden', 'true');
+            modalOperador.style.display = 'none';
         } else {
             modalOperador.setAttribute('aria-hidden', 'false');
+            modalOperador.style.display = 'flex';
             inputNomeOperador.focus();
         }
     }
 
-   btnEntrarPainel.addEventListener('click', () => {
+    btnEntrarPainel.addEventListener('click', () => {
         const nomeInput = inputNomeOperador.value.trim();
         if (nomeInput === '') {
             inputNomeOperador.style.borderColor = 'var(--danger)';
@@ -75,14 +74,12 @@ document.addEventListener('DOMContentLoaded', () => {
         operadorAtivo = nomeInput;
         nomeOperadorHeader.innerText = operadorAtivo;
         
-        // 🎯 Correção Direta: Altera o atributo e força o sumiço visual imediato
         modalOperador.setAttribute('aria-hidden', 'true');
         modalOperador.style.display = 'none'; 
         
         atualizarPainelCompleto();
     });
 
-    // Possibilidade de trocar de operador clicando no nome dele
     displayOperadorClick.addEventListener('click', () => {
         localStorage.removeItem('dashfull_operador');
         inputNomeOperador.value = operadorAtivo;
@@ -123,8 +120,77 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // 📡 CAPTURA DE DADOS DO BACK-END (PORTA 3000)
-  /async function carregarDadosDoBack
+    // 📡 CAPTURA DE DADOS DO FIREBASE EM TEMPO REAL
+    async function carregarDadosDoBack() {
+        try {
+            const res = await fetch('https://dashfulll-2321b-default-rtdb.firebaseio.com/historico_envios.json'); 
+            const data = await res.json();
+
+            if (!data) {
+                dadosLocais = [];
+                atualizarPainelCompleto();
+                return;
+            }
+
+            // Converte objeto do Firebase para Array
+            const listaFormatada = Object.keys(data).map(id => data[id]);
+
+            // Ordena do mais recente para o mais antigo
+            listaFormatada.sort((a, b) => new Date(b.data) - new Date(a.data));
+
+            dadosLocais = listaFormatada;
+            atualizarPainelCompleto();
+
+            const statusBadge = document.getElementById('sync-status');
+            if (statusBadge) {
+                statusBadge.innerText = 'Sincronização completa!';
+                statusBadge.style.backgroundColor = '#e6f6ee';
+                statusBadge.style.color = '#0f9d58';
+            }
+
+        } catch (err) {
+            console.error("Erro ao conectar ao Firebase:", err);
+            const statusBadge = document.getElementById('sync-status');
+            if (statusBadge) {
+                statusBadge.innerText = 'Erro de conexão';
+                statusBadge.style.backgroundColor = '#fee2e2';
+                statusBadge.style.color = '#ef4444';
+            }
+        }
+    }
+
+    // ⚡ FUNÇÃO GLOBAL PARA ATUALIZAR STATUS NO FIREBASE (REPLICA PARA TODOS)
+    window.alterarStatusEnvio = async function(idEnvio, novoStatus) {
+        const statusBadge = document.getElementById('sync-status');
+        if (statusBadge) {
+            statusBadge.innerText = 'A atualizar na nuvem...';
+            statusBadge.style.backgroundColor = '#fef3c7';
+            statusBadge.style.color = '#d97706';
+        }
+
+        const url = `https://dashfulll-2321b-default-rtdb.firebaseio.com/historico_envios/${idEnvio}.json`;
+
+        try {
+            const res = await fetch(url, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ meu_status: novoStatus })
+            });
+
+            if (!res.ok) throw new Error('Falha na resposta do servidor');
+
+            console.log(`✅ Envio ${idEnvio} atualizado com sucesso para: ${novoStatus}`);
+            await carregarDadosDoBack();
+
+        } catch (erro) {
+            console.error("❌ Erro ao sincronizar a ação do operador:", erro);
+            if (statusBadge) {
+                statusBadge.innerText = 'Erro ao sincronizar';
+                statusBadge.style.backgroundColor = '#fee2e2';
+                statusBadge.style.color = '#ef4444';
+            }
+        }
+    };
 
     // 📋 CONSTRUTOR GERAL E RECALCULADOR
     function atualizarPainelCompleto() {
@@ -141,55 +207,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         renderizarGraficosDinâmicos(dadosLocais);
     }
-// 📋 EXEMPLO DE COMO DEVE FICAR O MAPA DE LINHAS NA SUA FUNÇÃO DE RENDERIZAR
-function renderizarLinhasTabela(envios) {
-    const tbodyGeral = document.getElementById('tbody-geral'); // Ajusta para o ID do teu tbody
-    tbodyGeral.innerHTML = '';
 
-    if (envios.length === 0) {
-        tbodyGeral.innerHTML = '<tr><td colspan="8" style="text-align:center;">Nenhum envio localizado.</td></tr>';
-        return;
-    }
-
-    envios.forEach(envio => {
-        // Se o Firebase ainda não tiver um status humano, define como 'Pendente' por padrão
-        const statusHumano = envio.meu_status || 'Pendente';
-        
-        // Define cores diferentes para cada status interno no painel
-        let corBadge = '#6b7280'; // Cinzento para pendente
-        if (statusHumano === 'Finalizado') corBadge = '#10b981'; // Verde
-        if (statusHumano === 'Com Divergência') corBadge = '#ef4444'; // Vermelho
-        if (statusHumano === 'Agendado') corBadge = '#3b82f6'; // Azul
-
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-            <td>${envio.conta}</td>
-            <td><strong>${envio.id_envio}</strong></td>
-            <td><span class="badge-ml">${envio.status}</span></td>
-            
-            <td>
-                <span style="background-color: ${corBadge}; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold;">
-                    ${statusHumano}
-                </span>
-            </td>
-            
-            <td>${envio.unidades_declaradas} / ${envio.unidades_recebidas}</td>
-            <td>${envio.galpao}</td>
-            <td>${new Date(envio.data).toLocaleString('pt-PT')}</td>
-            
-            <td>
-                <select onchange="alterarStatusEnvio('${envio.id_envio}', this.value)" style="padding: 4px; border-radius: 4px; border: 1px solid #d1d5db; font-size: 13px;">
-                    <option value="">Alterar status...</option>
-                    <option value="Pendente" ${statusHumano === 'Pendente' ? 'selected' : ''}>Pendente</option>
-                    <option value="Agendado" ${statusHumano === 'Agendado' ? 'selected' : ''}>Agendado</option>
-                    <option value="Finalizado" ${statusHumano === 'Finalizado' ? 'selected' : ''}>Finalizado</option>
-                    <option value="Com Divergência" ${statusHumano === 'Com Divergência' ? 'selected' : ''}>Com Divergência</option>
-                </select>
-            </td>
-        `;
-        tbodyGeral.appendChild(tr);
-    });
-}
     // 🔍 ENGINE DE FILTRAGEM AVANÇADA COMBINADA + ORDENAÇÃO
     function filtrarEProcessarDados() {
         const query = buscaId.value.trim().toLowerCase();
@@ -266,97 +284,67 @@ function renderizarLinhasTabela(envios) {
         paginacaoBotoes.appendChild(btnAvancar);
     }
 
-    // 📋 RENDER: VISÃO GERAL (INTEGRADO COM LOGS DO OPERADOR)
+    // 📋 RENDER: VISÃO GERAL (INTEGRADO COM FIREBASE E DROPDOWN)
     function renderizarTabelaGeral(envios) {
         if (!tbodyGeral) return;
         tbodyGeral.innerHTML = '';
 
         if (envios.length === 0) {
-            tbodyGeral.innerHTML = `<tr><td colspan="8" style="text-align:center; color:#6b7280; padding: 20px;">Nenhum envio localizado.</td></tr>`;
+            tbodyGeral.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:20px; color:#6b7280;">Nenhum envio localizado.</td></tr>';
             return;
         }
 
-        envios.forEach(item => {
-            const tr = document.createElement('tr');
+        envios.forEach(envio => {
+            // Definições de Cores para o Status Interno (Firebase)
+            const statusHumano = envio.meu_status || 'Pendente';
+            let corBadge = '#6b7280'; 
+            if (statusHumano === 'Finalizado') corBadge = '#10b981'; 
+            if (statusHumano === 'Com Divergência') corBadge = '#ef4444'; 
+            if (statusHumano === 'Agendado') corBadge = '#3b82f6'; 
+
+            // Definições de Cores para o Status Original do ML
             let statusLabel = 'Agendado';
             let statusClass = 'badge-azul';
+            if (envio.status === 'closed_ok') { statusLabel = 'Finalizado'; statusClass = 'badge-verde'; }
+            else if (envio.status === 'closed_with_changes') { statusLabel = 'Divergência'; statusClass = 'badge-laranja'; }
+            else if (envio.status === 'expired') { statusLabel = 'Expirado'; statusClass = 'badge-vermelho'; }
+            else if (envio.status === 'cancelled') { statusLabel = 'Cancelado'; statusClass = 'badge-vermelho'; }
 
-            if (item.status === 'closed_ok') { statusLabel = 'Finalizado'; statusClass = 'badge-verde'; }
-            else if (item.status === 'closed_with_changes') { statusLabel = 'Divergência'; statusClass = 'badge-laranja'; }
-            else if (item.status === 'expired') { statusLabel = 'Expirado'; statusClass = 'badge-vermelho'; }
-            else if (item.status === 'cancelled') { statusLabel = 'Cancelado'; statusClass = 'badge-vermelho'; }
-
-            const dataObjeto = new Date(item.data);
+            // Datas e Volumes
+            const dataObjeto = new Date(envio.data);
             const dataFormatada = dataObjeto.toLocaleDateString('pt-BR');
             const horaFormatada = dataObjeto.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
-            // 👤 LÓGICA DE MEU STATUS INTEGRADA AO OPERADOR ATIVO
-            let meuStatusHtml = '';
-            const logExistente = logsOperacionaisLocais[item.id_envio];
-
-            if (logExistente) {
-                // Se houver clique ou log gravado na sessão
-                const badgeCor = logExistente.tipo === 'Finalizar' ? 'badge-verde' : 'badge-azul';
-                meuStatusHtml = `
-                    <div class="local-status-wrapper">
-                        <span class="badge ${badgeCor}" style="padding: 2px 8px; font-size: 11px; min-width: auto; font-weight:700;">${logExistente.texto}</span>
-                        <div style="font-size: 10px; color: #6b7280; margin-top: 2px; font-weight: 600;">👤 ${logExistente.op} às ${logExistente.hora}</div>
-                    </div>`;
-            } else if (item.status === 'closed_ok' || item.status === 'closed_with_changes') {
-                meuStatusHtml = `
-                    <div class="local-status-wrapper">
-                        <span class="badge badge-verde" style="padding: 2px 8px; font-size: 11px; min-width: auto; font-weight:700;">Concluído</span>
-                        <div style="font-size: 10px; color: #6b7280; margin-top: 2px; font-weight: 600;">⏱️ Fim: ${horaFormatada}</div>
-                    </div>`;
-            } else {
-                meuStatusHtml = `
-                    <div class="local-status-wrapper">
-                        <span class="badge badge-azul" style="padding: 2px 8px; font-size: 11px; min-width: auto; font-weight:700;">Aguardando</span>
-                        <div style="font-size: 10px; color: #6b7280; margin-top: 2px; font-weight: 600;">⏱️ Início: ${horaFormatada}</div>
-                    </div>`;
-            }
-
-            const temQuebra = item.unidades_recebidas < item.unidades_declaradas;
+            const temQuebra = envio.unidades_recebidas < envio.unidades_declaradas;
             const unidadesHtml = temQuebra 
-                ? `<span class="texto-danger"><strong>${item.unidades_declaradas}</strong> / ${item.unidades_recebidas} <i class="fa-solid fa-triangle-exclamation"></i></span>`
-                : `<strong>${item.unidades_declaradas}</strong> / ${item.unidades_recebidas}`;
+                ? `<span class="texto-danger"><strong>${envio.unidades_declaradas}</strong> / ${envio.unidades_recebidas} <i class="fa-solid fa-triangle-exclamation"></i></span>`
+                : `<strong>${envio.unidades_declaradas}</strong> / ${envio.unidades_recebidas}`;
 
+            const tr = document.createElement('tr');
             tr.innerHTML = `
-                <td><strong>${item.conta}</strong></td>
-                <td>#${item.id_envio}</td>
+                <td><strong>${envio.conta}</strong></td>
+                <td>#${envio.id_envio}</td>
                 <td><span class="status-badge ${statusClass}">${statusLabel}</span></td>
-                <td>${meuStatusHtml}</td>
+                
+                <td>
+                    <span style="background-color: ${corBadge}; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold;">
+                        ${statusHumano}
+                    </span>
+                </td>
+                
                 <td>${unidadesHtml}</td>
-                <td><span class="galpao-tag">${item.galpao}</span></td>
+                <td><span class="galpao-tag">${envio.galpao}</span></td>
                 <td><strong>${dataFormatada}</strong> <span style="color:#6b7280; font-size:12px;">${horaFormatada}</span></td>
+                
                 <td class="text-center">
-                    <button class="btn-action btn-preparar">Preparação</button>
-                    <button class="btn-action primary btn-concluir">${item.status === 'closed_with_changes' ? 'Auditar Caixas' : 'Finalizar'}</button>
+                    <select onchange="window.alterarStatusEnvio('${envio.id_envio}', this.value)" style="padding: 4px; border-radius: 4px; border: 1px solid #d1d5db; font-size: 13px; cursor: pointer; outline: none;">
+                        <option value="Pendente" ${statusHumano === 'Pendente' ? 'selected' : ''}>⏳ Pendente</option>
+                        <option value="Agendado" ${statusHumano === 'Agendado' ? 'selected' : ''}>📅 Agendado</option>
+                        <option value="Finalizado" ${statusHumano === 'Finalizado' ? 'selected' : ''}>✅ Finalizado</option>
+                        <option value="Com Divergência" ${statusHumano === 'Com Divergência' ? 'selected' : ''}>⚠️ Com Divergência</option>
+                    </select>
                 </td>
             `;
-
-            // 🎯 ESCUTA DE CLIQUES OPERACIONAIS REAIS GRAVANDO QUEM MUDOU O PAINEL
-            tr.querySelector('.btn-preparar').addEventListener('click', () => {
-                logsOperacionaisLocais[item.id_envio] = {
-                    tipo: 'Preparação',
-                    texto: 'Em Preparação',
-                    op: operadorAtivo,
-                    hora: new Date().toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})
-                };
-                recalcularEExibirPagina();
-            });
-
-            tr.querySelector('.btn-concluir').addEventListener('click', (e) => {
-                if (e.target.innerText.includes('Auditar')) return; // Abre auditoria paralela se for quebra
-                logsOperacionaisLocais[item.id_envio] = {
-                    tipo: 'Finalizar',
-                    texto: 'Concluído',
-                    op: operadorAtivo,
-                    hora: new Date().toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})
-                };
-                recalcularEExibirPagina();
-            });
-
             tbodyGeral.appendChild(tr);
         });
     }
@@ -398,57 +386,63 @@ function renderizarLinhasTabela(envios) {
         envios.forEach(i => { totalDec += i.unidades_declaradas; totalRec += i.unidades_recebidas; });
 
         if (chartInstanceGalpao) chartInstanceGalpao.destroy();
-        const ctxGalpao = document.getElementById('chart-galpoes').getContext('2d');
-        chartInstanceGalpao = new Chart(ctxGalpao, {
-            type: 'doughnut',
-            data: {
-                labels: ['Araçariguama', 'Perus'],
-                datasets: [{
-                    data: [qtdAraca || 1, qtdPerus || 0],
-                    backgroundColor: ['#3483fa', '#f39c12'],
-                    borderWidth: 2
-                }]
-            },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11, weight: 600 } } } } }
-        });
+        const ctxGalpao = document.getElementById('chart-galpoes');
+        if(ctxGalpao) {
+            chartInstanceGalpao = new Chart(ctxGalpao.getContext('2d'), {
+                type: 'doughnut',
+                data: {
+                    labels: ['Araçariguama', 'Perus'],
+                    datasets: [{
+                        data: [qtdAraca || 1, qtdPerus || 0],
+                        backgroundColor: ['#3483fa', '#f39c12'],
+                        borderWidth: 2
+                    }]
+                },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11, weight: 600 } } } } }
+            });
+        }
 
         if (chartInstanceDivergencia) chartInstanceDivergencia.destroy();
-        const ctxDivergencia = document.getElementById('chart-divergencias').getContext('2d');
-        chartInstanceDivergencia = new Chart(ctxDivergencia, {
-            type: 'bar',
-            data: {
-                labels: ['Métricas Totais de Peças'],
-                datasets: [
-                    { label: 'Declarado', data: [totalDec], backgroundColor: '#3483fa' },
-                    { label: 'Recebido', data: [totalRec], backgroundColor: '#2ecc71' }
-                ]
-            },
-            options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } }, plugins: { legend: { labels: { boxWidth: 12, font: { weight: 600 } } } } }
-        });
+        const ctxDivergencia = document.getElementById('chart-divergencias');
+        if(ctxDivergencia) {
+            chartInstanceDivergencia = new Chart(ctxDivergencia.getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: ['Métricas Totais de Peças'],
+                    datasets: [
+                        { label: 'Declarado', data: [totalDec], backgroundColor: '#3483fa' },
+                        { label: 'Recebido', data: [totalRec], backgroundColor: '#2ecc71' }
+                    ]
+                },
+                options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } }, plugins: { legend: { labels: { boxWidth: 12, font: { weight: 600 } } } } }
+            });
+        }
     }
 
     // 📊 RECALCULADOR DE KPIs
     function recalcularCardsKPI(envios) {
-        cardEnvios.innerText = envios.length;
+        if(cardEnvios) cardEnvios.innerText = envios.length;
         let dec = 0, rec = 0;
         envios.forEach(e => { dec += Number(e.unidades_declaradas); rec += Number(e.unidades_recebidas); });
 
-        cardDeclarado.innerText = dec.toLocaleString('pt-BR');
-        cardRecebido.innerText = rec.toLocaleString('pt-BR');
+        if(cardDeclarado) cardDeclarado.innerText = dec.toLocaleString('pt-BR');
+        if(cardRecebido) cardRecebido.innerText = rec.toLocaleString('pt-BR');
 
-        if (dec > 0) {
-            const quebra = dec - rec;
-            cardDiscrepancia.innerText = `${((quebra / dec) * 100).toFixed(1)}%`;
-        } else {
-            cardDiscrepancia.innerText = '0%';
+        if(cardDiscrepancia) {
+            if (dec > 0) {
+                const quebra = dec - rec;
+                cardDiscrepancia.innerText = `${((quebra / dec) * 100).toFixed(1)}%`;
+            } else {
+                cardDiscrepancia.innerText = '0%';
+            }
         }
     }
 
     // 🎛️ ESCUTAS DE EVENTOS DE FILTRAGEM
-    filtroConta.addEventListener('change', filtrarEProcessarDados);
-    filtroGalpao.addEventListener('change', filtrarEProcessarDados);
-    ordenarData.addEventListener('change', filtrarEProcessarDados);
-    buscaId.addEventListener('input', filtrarEProcessarDados);
+    if(filtroConta) filtroConta.addEventListener('change', filtrarEProcessarDados);
+    if(filtroGalpao) filtroGalpao.addEventListener('change', filtrarEProcessarDados);
+    if(ordenarData) ordenarData.addEventListener('change', filtrarEProcessarDados);
+    if(buscaId) buscaId.addEventListener('input', filtrarEProcessarDados);
 
     pills.forEach(p => {
         p.addEventListener('click', () => {
@@ -461,44 +455,11 @@ function renderizarLinhasTabela(envios) {
 
     // ⏱️ RELÓGIO OPERACIONAL
     setInterval(() => {
-        document.getElementById('live-clock').innerText = new Date().toLocaleTimeString('pt-BR');
+        const liveClock = document.getElementById('live-clock');
+        if(liveClock) liveClock.innerText = new Date().toLocaleTimeString('pt-BR');
     }, 1000);
 
-    // Arranca verificando se o operador já está logado
+    // Arranca verificando se o operador já está logado e carregando os dados
     verificarOperador();
     carregarDadosDoBack();
 });
-// ⚡ FUNÇÃO PARA O OPERADOR ATUALIZAR O STATUS NO FIREBASE (REPLICA PARA TODOS)
-async function alterarStatusEnvio(idEnvio, novoStatus) {
-    // Exibe o status de "Sincronizando..." no painel superior
-    const statusBadge = document.getElementById('sync-status');
-    statusBadge.innerText = 'A atualizar na nuvem...';
-    statusBadge.style.backgroundColor = '#fef3c7';
-    statusBadge.style.color = '#d97706';
-
-    const url = `https://dashfulll-2321b-default-rtdb.firebaseio.com/historico_envios/${idEnvio}.json`;
-
-    try {
-        // O método PATCH atualiza apenas o campo 'meu_status' sem apagar os dados do Mercado Livre
-        const res = await fetch(url, {
-            method: 'PATCH',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ meu_status: novoStatus })
-        });
-
-        if (!res.ok) throw new Error('Falha na resposta do servidor');
-
-        console.log(`✅ Envio ${idEnvio} atualizado com sucesso para: ${novoStatus}`);
-        
-        // 🔥 Recarrega os dados imediatamente para atualizar o ecrã do operador atual
-        await carregarDadosDoBack();
-
-    } catch (erro) {
-        console.error("❌ Erro ao sincronizar a ação do operador:", erro);
-        statusBadge.innerText = 'Erro ao sincronizar';
-        statusBadge.style.backgroundColor = '#fee2e2';
-        statusBadge.style.color = '#ef4444';
-    }
-}
