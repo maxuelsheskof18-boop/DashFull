@@ -255,7 +255,7 @@ document.addEventListener('DOMContentLoaded', () => {
             let batePill = true;
             if (statusPillAtivo === 'closed_ok') batePill = (item.status === 'closed_ok');
             else if (statusPillAtivo === 'closed_with_changes') batePill = (item.status === 'closed_with_changes');
-            else if (statusPillAtivo === 'pending') batePill = (item.status === 'pending' || item.status === 'active');
+            else if (statusPillAtivo === 'pending') batePill = (item.status !== 'closed_ok' && item.status !== 'closed_with_changes' && item.status !== 'cancelled' && item.status !== 'expired');
 
             return bateConta && bateGalpao && bateId && batePill;
         });
