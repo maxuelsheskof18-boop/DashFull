@@ -235,7 +235,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('count-todos').innerText = `(${dadosLocais.length})`;
         document.getElementById('count-finalizados').innerText = `(${dadosLocais.filter(i => i.status === 'closed_ok').length})`;
         document.getElementById('count-divergencias').innerText = `(${dadosLocais.filter(i => i.status === 'closed_with_changes').length})`;
-        document.getElementById('count-agendados').innerText = `(${dadosLocais.filter(i => i.status === 'pending' || i.status === 'active').length})`;
+        document.getElementById('count-agendados').innerText = `(${dadosLocais.filter(i => i.status !== 'closed_ok' && i.status !== 'closed_with_changes' && i.status !== 'cancelled' && i.status !== 'expired').length})`;
 
         renderizarGraficosDinâmicos(dadosLocais);
     }
