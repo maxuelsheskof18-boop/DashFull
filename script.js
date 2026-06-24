@@ -125,10 +125,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 📡 CAPTURA DE DADOS DO BACK-END (PORTA 3000)
   // 📡 CAPTURA DE DADOS DINÂMICA (ATUALIZADA COM TRATAMENTO DE ERROS 500)
+   // 📡 CAPTURA DE DADOS DIRETO DA API DO GOOGLE APPS SCRIPT
     async function carregarDadosDoBack() {
         try {
-            const res = await fetch('/api/inbounds'); 
+            // ⚠️ COLOQUE A URL GERADA PELO GOOGLE AQUI DENTRO DAS ASPAS:
+            const API_URL = "https://script.google.com/macros/s/AKfycbzwsplHcLG6uyjVkB8fu9NYWvv_vU47jPZr_Im4yYOvEhEwv1mVyqZJitAUgNEuQYn4dw/exec";
+
+            const res = await fetch(API_URL);
             const data = await res.json();
+            
+            // Restante do seu código normal...
 
             // 🎯 CAPTURA O ERRO REAL: Se o back-end devolveu um objeto de erro em vez da lista
             if (data && data.error) {
