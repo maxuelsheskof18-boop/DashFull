@@ -26,11 +26,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const filtroConta = document.getElementById('filtro-conta');
     const filtroGalpao = document.getElementById('filtro-galpao');
     const ordenarData = document.getElementById('ordenar-data');
-    const pillsBar = document.querySelector('.pills-bar');
     let pills = document.querySelectorAll('.pills-bar .pill');
     const buscaId = document.getElementById('busca-id');
     const paginacaoInfo = document.getElementById('paginacao-info');
     const paginacaoBotoes = document.getElementById('paginacao-botoes');
+
+    // mobile menu button (pode não existir em desktop)
+    const btnOpenMenuMobile = document.getElementById('btn-open-menu-mobile');
 
     // 2. VARIÁVEIS GLOBAIS DE ESTADO
     let dadosLocais = [];
@@ -42,12 +44,13 @@ document.addEventListener('DOMContentLoaded', () => {
     let paginaAtual = 1;
     const itensPorPagina = 30;
 
-    // Configuração de Produtividade (Minutos por peça)
-    const MINUTOS_POR_PECA = 0.5;
+    // Configuração de Produtividade (Minutos por peça) - alterado para 3 minutos / peça / pessoa
+    const MINUTOS_POR_PECA = 3;
 
     let chartInstanceGalpao = null;
     let chartInstanceDivergencia = null;
 
+    // ---------- UTILITÁRIOS ----------
     function formatarTempoEstimado(totalMinutos) {
         const minutosTotais = Math.max(0, Math.round(Number(totalMinutos) || 0));
         const dias = Math.floor(minutosTotais / 1440);
@@ -61,28 +64,20 @@ document.addEventListener('DOMContentLoaded', () => {
         return partes.join(' ');
     }
 
-    function formatarDataHora(dataStr, horaStr, fallbackDataHora = '') {
-        const data = dataStr || '';
-        const hora = horaStr || '';
-        if (data && hora) return `${data} às ${hora}`;
-        if (data) return data;
-        if (fallbackDataHora) return fallbackDataHora;
-        return '—';
-    }
-
+    // ---------- RESUMO DE MOTORISTAS (com minimizar + seletor de mês) ----------
     function garantirPillsExtras() {
-        if (!pillsBar) return;
+        if (!document.querySelector('.pills-bar')) return;
 
         const inserirDepois = (statusBase, statusNovo, label, countId) => {
-            if (pillsBar.querySelector(`[data-status="${statusNovo}"]`)) return;
+            if (document.querySelector(`.pills-bar [data-status="${statusNovo}"]`)) return;
             const btn = document.createElement('button');
             btn.className = 'pill';
             btn.type = 'button';
             btn.setAttribute('data-status', statusNovo);
             btn.innerHTML = `${label} <span id="${countId}">(0)</span>`;
-            const ref = pillsBar.querySelector(`[data-status="${statusBase}"]`);
-            if (ref && ref.parentNode === pillsBar && ref.nextSibling) ref.parentNode.insertBefore(btn, ref.nextSibling);
-            else pillsBar.appendChild(btn);
+            const ref = document.querySelector(`.pills-bar [data-status="${statusBase}"]`);
+            if (ref && ref.parentNode === document.querySelector('.pills-bar') && ref.nextSibling) ref.parentNode.insertBefore(btn, ref.nextSibling);
+            else document.querySelector('.pills-bar').appendChild(btn);
         };
 
         inserirDepois('closed_ok', 'concluidos', 'Concluídos', 'count-concluidos');
@@ -102,39 +97,106 @@ document.addEventListener('DOMContentLoaded', () => {
         painel.id = 'painel-motoristas';
         painel.className = 'panel-card';
         painel.style.marginTop = '16px';
+
+        // Header com seletor de mês e botão minimizar
         painel.innerHTML = `
-            <div class="panel-card-header">
-                <h3>Resumo de Motoristas do Mês</h3>
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 12px;">
+                <h3 style="margin:0; font-size:15px;">Resumo de Motoristas do Mês</h3>
+                <div style="display:flex; gap:8px; align-items:center;">
+                    <input id="mes-seletor" type="month" style="padding:6px; border-radius:6px; border:1px solid #e2e8f0;">
+                    <button id="btn-toggle-resumo" title="Minimizar / Maximizar" style="padding:6px 8px; border-radius:6px; border:1px solid #e2e8f0; background:#fff;">—</button>
+                </div>
             </div>
-            <div id="motoristas-resumo-corpo" style="padding:16px; display:grid; gap:14px;"></div>
+            <div id="motoristas-resumo-corpo" style="padding:12px;"></div>
         `;
         topo.insertAdjacentElement('afterend', painel);
+
+        initResumoControls(painel);
         return painel;
+    }
+
+    function initResumoControls(painel) {
+        const btn = painel.querySelector('#btn-toggle-resumo');
+        const mesSel = painel.querySelector('#mes-seletor');
+        const corpo = painel.querySelector('#motoristas-resumo-corpo');
+
+        // set default month to current month (YYYY-MM)
+        const hoje = new Date();
+        const defaultMonth = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`;
+        if (mesSel) {
+            if (!mesSel.value) mesSel.value = defaultMonth;
+        }
+
+        // restore collapsed state
+        const chave = 'resumo_motoristas_collapsed';
+        const collapsed = localStorage.getItem(chave) === '1';
+        if (collapsed) {
+            painel.classList.add('collapsed');
+            if (btn) btn.innerText = '+';
+            if (corpo) corpo.style.display = 'none';
+        } else {
+            painel.classList.remove('collapsed');
+            if (btn) btn.innerText = '—';
+            if (corpo) corpo.style.display = '';
+        }
+
+        if (btn) {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const isCollapsed = painel.classList.toggle('collapsed');
+                if (isCollapsed) {
+                    btn.innerText = '+';
+                    if (corpo) corpo.style.display = 'none';
+                    localStorage.setItem(chave, '1');
+                } else {
+                    btn.innerText = '—';
+                    if (corpo) corpo.style.display = '';
+                    localStorage.setItem(chave, '0');
+                }
+            });
+        }
+
+        if (mesSel) {
+            mesSel.addEventListener('change', () => {
+                atualizarResumoMotoristas(dadosLocais); // usa valor do seletor internamente
+            });
+        }
+    }
+
+    // Filtra envios pelo mês selecionado no painel (se existir)
+    function obterFiltroMesDoPainel() {
+        const painel = document.getElementById('painel-motoristas');
+        if (!painel) return null;
+        const mesSel = painel.querySelector('#mes-seletor');
+        if (!mesSel || !mesSel.value) return null;
+        const [ano, mes] = mesSel.value.split('-').map(Number);
+        if (!ano || !mes) return null;
+        return { ano, mes }; // mes: 1-12
     }
 
     function atualizarResumoMotoristas(envios) {
         const painel = garantirResumoMotoristas();
         if (!painel) return;
-
         const corpo = painel.querySelector('#motoristas-resumo-corpo');
         if (!corpo) return;
 
-        const agora = new Date();
-        const mesAtual = agora.getMonth();
-        const anoAtual = agora.getFullYear();
-
-        const concluidosMes = envios.filter(item => {
-            if (item.meu_status !== 'Concluído') return false;
-            const baseData = item.conclusao_data || item.data;
-            const dataObj = new Date(baseData);
-            return !isNaN(dataObj.getTime()) && dataObj.getMonth() === mesAtual && dataObj.getFullYear() === anoAtual;
-        });
+        const filtroMes = obterFiltroMesDoPainel();
+        // filtra envios que tem meu_status === 'Concluído' e que ocorreram no mês selecionado (usar conclusao_data ou data)
+        let concluidos = (envios || []).filter(item => item.meu_status === 'Concluído');
+        if (filtroMes) {
+            concluidos = concluidos.filter(item => {
+                const dataBase = item.conclusao_data || item.data;
+                const d = new Date(dataBase);
+                if (isNaN(d.getTime())) return false;
+                return (d.getFullYear() === filtroMes.ano && (d.getMonth() + 1) === filtroMes.mes);
+            });
+        }
 
         const porMotorista = {};
         const porDia = {};
 
-        concluidosMes.forEach(item => {
-            const motorista = String(item.motorista || item.motorista_nome || item.motorista_saida || 'Sem motorista').trim() || 'Sem motorista';
+        concluidos.forEach(item => {
+            const motorista = String(item.motorista || 'Sem motorista').trim() || 'Sem motorista';
             porMotorista[motorista] = (porMotorista[motorista] || 0) + 1;
 
             const dataBase = item.conclusao_data || item.data;
@@ -170,10 +232,10 @@ document.addEventListener('DOMContentLoaded', () => {
         corpo.innerHTML = `
             <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px; align-items:start;">
                 <div style="border:1px solid #e2e8f0; border-radius:10px; overflow:hidden;">
-                    <div style="padding:10px 12px; background:#f8fafc; font-weight:700; color:#334155;">Fulls concluídos no mês atual</div>
+                    <div style="padding:10px 12px; background:#f8fafc; font-weight:700; color:#334155;">Fulls concluídos no mês selecionado</div>
                     <table style="width:100%; border-collapse:collapse; font-size:13px;">
                     <thead><tr><th style="text-align:left; padding:8px 10px; color:#64748b;">Motorista</th><th style="text-align:right; padding:8px 10px; color:#64748b;">Qtd</th></tr></thead>
-                    <tbody>${ranking || '<tr><td colspan="2" style="padding:12px; color:#94a3b8;">Sem conclusões registradas neste mês.</td></tr>'}</tbody>
+                    <tbody>${ranking || '<tr><td colspan="2" style="padding:12px; color:#94a3b8;">Sem conclusões registradas no período.</td></tr>'}</tbody>
                     </table>
                 </div>
                 <div style="border:1px solid #e2e8f0; border-radius:10px; overflow:hidden;">
@@ -186,43 +248,49 @@ document.addEventListener('DOMContentLoaded', () => {
 
     garantirPillsExtras();
 
-    // 3. CONTROLE DE LOGIN DO OPERADOR
+    // ---------- LOGIN DO OPERADOR ----------
     function verificarOperador() {
         const salvo = localStorage.getItem('dashfull_operador');
         if (salvo && salvo.trim() !== '') {
             operadorAtivo = salvo;
-            nomeOperadorHeader.innerText = operadorAtivo;
-            modalOperador.style.display = 'none';
+            if (nomeOperadorHeader) nomeOperadorHeader.innerText = operadorAtivo;
+            if (modalOperador) modalOperador.style.display = 'none';
         } else {
-            modalOperador.style.display = 'flex';
-            inputNomeOperador.focus();
+            if (modalOperador) modalOperador.style.display = 'flex';
+            if (inputNomeOperador) inputNomeOperador.focus();
         }
     }
 
-    btnEntrarPainel.addEventListener('click', () => {
-        const nomeInput = inputNomeOperador.value.trim();
-        if (nomeInput === '') {
-            inputNomeOperador.style.borderColor = 'var(--danger)';
-            return;
-        }
-        localStorage.setItem('dashfull_operador', nomeInput);
-        operadorAtivo = nomeInput;
-        nomeOperadorHeader.innerText = operadorAtivo;
-        modalOperador.style.display = 'none';
-        atualizarPainelCompleto();
-    });
+    if (btnEntrarPainel) {
+        btnEntrarPainel.addEventListener('click', () => {
+            const nomeInput = inputNomeOperador.value.trim();
+            if (nomeInput === '') {
+                inputNomeOperador.style.borderColor = 'var(--danger)';
+                return;
+            }
+            localStorage.setItem('dashfull_operador', nomeInput);
+            operadorAtivo = nomeInput;
+            if (nomeOperadorHeader) nomeOperadorHeader.innerText = operadorAtivo;
+            if (modalOperador) modalOperador.style.display = 'none';
+            atualizarPainelCompleto();
+        });
+    }
 
-    displayOperadorClick.addEventListener('click', () => {
-        localStorage.removeItem('dashfull_operador');
-        inputNomeOperador.value = operadorAtivo;
-        verificarOperador();
-    });
+    if (displayOperadorClick) {
+        displayOperadorClick.addEventListener('click', () => {
+            localStorage.removeItem('dashfull_operador');
+            inputNomeOperador.value = operadorAtivo;
+            verificarOperador();
+        });
+    }
 
-    // 4. NAVEGAÇÃO E SIDEBAR
-    btnToggleSidebar.addEventListener('click', () => {
-        sidebar.classList.toggle('collapsed');
-        toggleIcon.className = sidebar.classList.contains('collapsed') ? 'fa-solid fa-chevron-right' : 'fa-solid fa-chevron-left';
-    });
+    // ---------- SIDEBAR & MOBILE ----------
+    if (btnToggleSidebar) {
+        btnToggleSidebar.addEventListener('click', () => {
+            sidebar.classList.toggle('collapsed');
+            toggleIcon.className = sidebar.classList.contains('collapsed') ? 'fa-solid fa-chevron-right' : 'fa-solid fa-chevron-left';
+        });
+    }
 
     menuItems.forEach(item => {
         item.addEventListener('click', () => {
@@ -231,19 +299,60 @@ document.addEventListener('DOMContentLoaded', () => {
 
             item.classList.add('active');
             const targetPage = item.getAttribute('data-page');
-            document.getElementById(`page-${targetPage}`).classList.add('active');
+            const pageEl = document.getElementById(`page-${targetPage}`);
+            if (pageEl) pageEl.classList.add('active');
 
             if (targetPage === 'visao-geral') {
-                headerTitle.innerText = 'Painel de Controle';
-                headerSubtitle.innerText = 'Monitoramento de envios em tempo real';
+                if (headerTitle) headerTitle.innerText = 'Painel de Controle';
+                if (headerSubtitle) headerSubtitle.innerText = 'Monitoramento de envios em tempo real';
             } else if (targetPage === 'pendencias') {
-                headerTitle.innerText = 'Gestão de Pendências';
-                headerSubtitle.innerText = 'Controle de auditoria e quebras do Full';
+                if (headerTitle) headerTitle.innerText = 'Gestão de Pendências';
+                if (headerSubtitle) headerSubtitle.innerText = 'Controle de auditoria e quebras do Full';
             }
         });
     });
 
-    // 5. CONEXÃO COM O FIREBASE E TEMPO REAL
+    // mobile sidebar backdrop
+    let sidebarBackdrop = document.getElementById('sidebar-backdrop');
+    if (!sidebarBackdrop) {
+      sidebarBackdrop = document.createElement('div');
+      sidebarBackdrop.id = 'sidebar-backdrop';
+      document.body.appendChild(sidebarBackdrop);
+    }
+
+    function abrirSidebarMobile() {
+      if (!sidebar) return;
+      sidebar.classList.add('open');
+      sidebarBackdrop.classList.add('show');
+      document.body.style.overflow = 'hidden';
+    }
+    function fecharSidebarMobile() {
+      if (!sidebar) return;
+      sidebar.classList.remove('open');
+      sidebarBackdrop.classList.remove('show');
+      document.body.style.overflow = '';
+    }
+
+    if (btnOpenMenuMobile) {
+      btnOpenMenuMobile.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (sidebar.classList.contains('open')) fecharSidebarMobile();
+        else abrirSidebarMobile();
+      });
+      btnOpenMenuMobile.style.display = '';
+    }
+
+    sidebarBackdrop.addEventListener('click', fecharSidebarMobile);
+
+    window.addEventListener('resize', () => {
+      if (window.innerWidth > 900) {
+        if (sidebar) sidebar.classList.remove('open');
+        if (sidebarBackdrop) sidebarBackdrop.classList.remove('show');
+        document.body.style.overflow = '';
+      }
+    });
+
+    // ---------- FIREBASE ----------
     const FIREBASE_BASE = 'https://dashfulll-2321b-default-rtdb.firebaseio.com';
 
     async function carregarDadosDoBack() {
@@ -281,8 +390,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     setInterval(carregarDadosSilent, 4000); // Checa o firebase a cada 4 segundos
 
-    // 6. FUNÇÕES GLOBAIS DE GRAVAÇÃO (FIREBASE)
-    window.acionarBotao = async function(idEnvio, novoStatus, motorista = '') {
+    // ---------- GRAVAÇÃO / AÇÕES GLOBAIS ----------
+    window.acionarBotao = async function(idEnvio, novoStatus, extra = {}) {
         const url = `${FIREBASE_BASE}/historico_envios/${idEnvio}.json`;
         const agora = new Date();
         const dataAtual = agora.toLocaleDateString('pt-BR');
@@ -304,17 +413,17 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (novoStatus === 'Concluído') {
-            const motoristaLimpo = String(motorista || '').trim();
-            if (!motoristaLimpo) {
-                alert('Informe o nome do motorista antes de concluir.');
-                return;
-            }
+            // NÃO FORÇAR motorista — apenas gravar conclusão metadata
             payload.conclusao_data = dataAtual;
             payload.conclusao_hora = horaAtual;
             payload.conclusao_operador = operador;
             payload.conclusao_registro = `${dataAtual} ${horaAtual}`;
-            payload.motorista = motoristaLimpo;
+            if (extra.motorista) payload.motorista = String(extra.motorista).trim();
         }
+
+        Object.keys(extra || {}).forEach(k => {
+            if (k !== 'motorista') payload[k] = extra[k];
+        });
 
         await fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
         await carregarDadosDoBack();
@@ -324,36 +433,164 @@ document.addEventListener('DOMContentLoaded', () => {
         const url = `${FIREBASE_BASE}/historico_envios/${idEnvio}.json`;
         let dados = {}; dados[campo] = valor;
         await fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(dados) });
+        // atualizar localmente (recarrega os dados)
+        await carregarDadosDoBack();
     };
 
     window.marcarItemConferido = async function(idEnvio, sku, isChecked) {
         const url = `${FIREBASE_BASE}/historico_envios/${idEnvio}/itens/${sku}.json`;
         await fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ conferido: isChecked }) });
+        await carregarDadosDoBack();
     };
 
     window.marcarDivergenciaItem = async function(idEnvio, sku, statusDivergencia) {
         const url = `${FIREBASE_BASE}/historico_envios/${idEnvio}/itens/${sku}.json`;
         await fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ divergencia: statusDivergencia }) });
-    };
-
-    // Salvar motorista e caminhão/placa via PATCH (editável inline)
-    window.salvarMotoristaCaminhao = async function(idEnvio) {
-        const motoristaInput = document.getElementById(`input-motorista-${idEnvio}`);
-        const caminhaoInput = document.getElementById(`input-caminhao-${idEnvio}`);
-        const motorista = motoristaInput ? String(motoristaInput.value || '').trim() : '';
-        const caminhao = caminhaoInput ? String(caminhaoInput.value || '').trim() : '';
-        if (!motorista && !caminhao) {
-            alert('Informe o motorista ou os dados do caminhão para salvar.');
-            return;
-        }
-        const url = `${FIREBASE_BASE}/historico_envios/${idEnvio}.json`;
-        const payload = {};
-        if (motorista) payload.motorista = motorista;
-        if (caminhao) payload.caminhao = caminhao;
-        await fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
         await carregarDadosDoBack();
     };
 
+    // Salvar dados transporte + dificuldade + observacao (não exige motorista)
+    window.salvarDadosTransporte = async function(idEnvio) {
+        const motorEl = document.getElementById(`input-motorista-${idEnvio}`);
+        const camEl = document.getElementById(`input-caminhao-${idEnvio}`);
+        const difEl = document.getElementById(`input-dificuldade-${idEnvio}`);
+        const obsEl = document.getElementById(`textarea-observacao-${idEnvio}`);
+
+        const motorista = motorEl ? motorEl.value.trim() : '';
+        const caminhao = camEl ? camEl.value.trim() : '';
+        const dificuldade = difEl ? difEl.value : '';
+        const observacao = obsEl ? obsEl.value.trim() : '';
+
+        const url = `${FIREBASE_BASE}/historico_envios/${idEnvio}.json`;
+        const dados = {
+            motorista: motorista || '',
+            caminhao_placa: caminhao || '',
+            dificuldade: dificuldade || '',
+            observacao: observacao || ''
+        };
+        await fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(dados) });
+        if (motorEl) motorEl.style.borderColor = '#cbd5e1';
+        alert('Dados salvos.');
+        await carregarDadosDoBack();
+    };
+
+    // Registrar tempo de preparação (início / fim)
+    window.registrarTempoPreparacao = async function(idEnvio, tipo) {
+        const campo = tipo === 'inicio' ? 'hora_inicio_preparacao' : 'hora_fim_preparacao';
+        const valorLocal = new Date().toLocaleString('pt-BR');
+        const url = `${FIREBASE_BASE}/historico_envios/${idEnvio}.json`;
+        let dados = {}; dados[campo] = valorLocal;
+        await fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(dados) });
+        alert(`${tipo === 'inicio' ? 'Início' : 'Fim'} de preparação registrado: ${valorLocal}`);
+        await carregarDadosDoBack();
+    };
+
+    // ---------- Atualizar equipe (versão robusta) ----------
+    window.atualizarEquipe = async function(idEnvioRaw) {
+      try {
+        const idEnvio = String(idEnvioRaw || '').replace(/[<> ]/g,'').trim();
+        if (!idEnvio) { console.warn('[atualizarEquipe] id inválido:', idEnvioRaw); return; }
+        console.log('[atualizarEquipe] inicio para', idEnvio);
+
+        // encontra input de pessoas (exato ou parcial)
+        let el = document.getElementById(`pessoas-input-${idEnvio}`);
+        if (!el) el = document.querySelector(`[id*="${idEnvio}"][id^="pessoas-input-"], input[name="pessoas-${idEnvio}"], input[id$="${idEnvio}"]`);
+        const valor = el ? Math.max(1, Number(el.value) || 1) : 1;
+        console.log('[atualizarEquipe] valor pessoas =', valor, 'inputEncontrado:', !!el);
+
+        if (typeof window.salvarMetaPrazo === 'function') {
+          console.log('[atualizarEquipe] chamando salvarMetaPrazo...');
+          await window.salvarMetaPrazo(idEnvio, 'pessoas_alocadas', valor);
+          console.log('[atualizarEquipe] salvarMetaPrazo finalizado');
+        } else {
+          console.warn('[atualizarEquipe] salvarMetaPrazo não encontrada. Pulando gravação.');
+        }
+
+        // Helper para localizar elementos de estimativa (exato ou parcial)
+        const findEstimElements = () => {
+          const estimEl = document.getElementById(`estimativa-${idEnvio}`) || document.querySelector(`[id*="estimativa-${idEnvio}"], [id$="${idEnvio}"]`) || null;
+          const minutosEl = document.getElementById(`estimativa-minutos-${idEnvio}`) || document.querySelector(`[id*="estimativa-minutos-${idEnvio}"], [id$="estimativa-minutos-${idEnvio}"]`) || null;
+          const horasEl = document.getElementById(`estimativa-horas-${idEnvio}`) || document.querySelector(`[id*="estimativa-horas-${idEnvio}"], [id$="estimativa-horas-${idEnvio}"]`) || null;
+          const opsSpan = document.getElementById(`estimativa-ops-${idEnvio}`) || document.querySelector(`[id*="estimativa-ops-${idEnvio}"], [id$="estimativa-ops-${idEnvio}"]`) || null;
+          return { estimEl, minutosEl, horasEl, opsSpan, inputEl: el };
+        };
+
+        const aplicarAtualizacaoDOM = () => {
+          const { estimEl, minutosEl, horasEl, opsSpan } = findEstimElements();
+          let total = 0, progresso = 0;
+
+          if (estimEl) {
+            total = Number(estimEl.getAttribute('data-total')) || total;
+            progresso = Number(estimEl.getAttribute('data-progresso')) || progresso;
+          } else {
+            // tenta inferir total a partir do texto de minutos atual (se houver atributo)
+            if (minutosEl && minutosEl.getAttribute('data-total')) total = Number(minutosEl.getAttribute('data-total')) || total;
+          }
+
+          const restante = Math.max(0, total - (progresso || 0));
+
+          // total minutos para concluir tudo (total trabalho)
+          const minutosTotais = Math.ceil(restante * (typeof MINUTOS_POR_PECA !== 'undefined' ? MINUTOS_POR_PECA : 3));
+
+          // minutos por pessoa (distribuído entre 'valor' operadores)
+          const minutosPorPessoa = Math.max(0, Math.ceil(minutosTotais / (valor || 1)));
+
+          // horas estimadas por pessoa (decimal)
+          const horasEstimadasPorPessoa = (minutosPorPessoa / 60);
+
+          // formata para exibição legível por pessoa
+          const tempoFormatadoPorPessoa = (typeof formatarTempoEstimado === 'function') ? formatarTempoEstimado(minutosPorPessoa) : `${minutosPorPessoa} min`;
+
+          // atualizar small (inline) mostrando tempo POR PESSOA seguido de " / X Ops"
+          if (estimEl) {
+            estimEl.setAttribute('data-restante', restante);
+            estimEl.setAttribute('data-progresso', progresso);
+            estimEl.innerText = `Feitas: ${progresso} — Faltam: ${restante} • ⏳ Est: ${tempoFormatadoPorPessoa} / ${valor} Ops`;
+            console.log('[atualizarEquipe] updated estimativa-inline:', estimEl.innerText);
+          }
+
+          // atualizar blocos grandes: minutos e horas mostram POR PESSOA (para corresponder à string acima)
+          if (minutosEl) {
+            minutosEl.innerText = `${minutosPorPessoa} min`;
+            minutosEl.setAttribute('data-total', minutosTotais); // guarda total se necessário
+            console.log('[atualizarEquipe] updated minutosEl (por pessoa):', minutosEl.innerText);
+          }
+          if (horasEl) {
+            horasEl.innerText = `${horasEstimadasPorPessoa.toFixed(1)} h`;
+            console.log('[atualizarEquipe] updated horasEl (por pessoa):', horasEl.innerText);
+          }
+          if (opsSpan) {
+            opsSpan.innerText = `${valor}`;
+            console.log('[atualizarEquipe] updated opsSpan:', opsSpan.innerText);
+          }
+
+          return { estimElExists: !!estimEl, minutosElExists: !!minutosEl, horasElExists: !!horasEl, opsSpanExists: !!opsSpan };
+        };
+
+        // tenta aplicar de imediato
+        let res = aplicarAtualizacaoDOM();
+
+        // se faltou algum elemento, tenta por alguns ciclos (em caso de re-render assíncrono)
+        if (!res.estimElExists || !res.minutosElExists || !res.horasElExists) {
+          console.log('[atualizarEquipe] elementos não encontrados imediatamente; fazendo retries curtos...');
+          let attempts = 0;
+          const timer = setInterval(() => {
+            attempts++;
+            res = aplicarAtualizacaoDOM();
+            if ((res.estimElExists && res.minutosElExists && res.horasElExists) || attempts >= 10) {
+              clearInterval(timer);
+              console.log('[atualizarEquipe] retries finalizados, tentativas=', attempts, 'res=', res);
+            }
+          }, 250);
+        }
+
+        console.log('[atualizarEquipe] fim para', idEnvio);
+      } catch (err) {
+        console.error('[atualizarEquipe] erro:', err);
+      }
+    };
+
+    // ---------- ADIÇÃO / PENDÊNCIAS / PROGRESSO ----------
     window.adicionarProgresso = async function(idEnvio, produto, quantidade) {
         produto = String(produto || '').trim();
         quantidade = Number(quantidade) || 0;
@@ -376,14 +613,13 @@ document.addEventListener('DOMContentLoaded', () => {
         await carregarDadosDoBack();
     };
 
-    // Pendências: reportar / remover
     window.reportarPendencia = async function(idEnvio, produto, quantidade) {
         produto = String(produto || '').trim();
         quantidade = Number(quantidade);
         if (!produto && (!quantidade || quantidade <= 0)) { alert('Informe produto ou quantidade.'); return; }
         const key = 'd' + Date.now();
         const url = `${FIREBASE_BASE}/historico_envios/${idEnvio}/pendencias/${key}.json`;
-        const payload = { produto: produto || null, quantidade: (Number.isFinite(quantidade) ? quantidade : null), timestamp: new Date().toLocaleString('pt-BR'), operador: operadorAtivo || '' };
+        const payload = { produto: produto || null, quantidade: (Number.isFinite(quantidade) ? quantidade : null), timestamp: new Date().toLocaleDateString('pt-BR') + ' ' + new Date().toLocaleTimeString('pt-BR'), operador: operadorAtivo || '' };
         await fetch(url, { method: 'PUT', headers:{ 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
         const prodInput = document.getElementById(`input-pend-prod-${idEnvio}`);
         const quantInput = document.getElementById(`input-pend-quant-${idEnvio}`);
@@ -413,11 +649,11 @@ document.addEventListener('DOMContentLoaded', () => {
         await carregarDadosDoBack();
     };
 
-    // 7. FILTROS E DISTRIBUIÇÃO NA TELA
+    // ---------- FILTROS E RENDER ----------
     function atualizarPainelCompleto() {
         filtrarEProcessarDados();
 
-        const pendentes = dadosLocais.filter(item => item.status === 'closed_with_changes' || Number(item.unidades_recebidas) < Number(item.unidades_declaradas));
+        const pendentes = dadosLocais.filter(item => item.status === 'closed_with_changes' || Number(item.unidades_recebidas || 0) < Number(item.unidades_declaradas || 0));
         if (badgePendenciasNav) badgePendenciasNav.innerText = pendentes.length;
         renderizarTabelaPendencias(pendentes);
 
@@ -437,7 +673,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (countPreparacao) countPreparacao.innerText = `(${dadosLocais.filter(i => String(i.meu_status || '').toLowerCase() === 'em preparação'.toLowerCase()).length})`;
         if (countPendenciasReport) countPendenciasReport.innerText = `(${dadosLocais.filter(i => i.pendencias && Object.keys(i.pendencias).length > 0).length})`;
 
+        // Atualiza o painel de motoristas com filtro de mês atual do seletor
         atualizarResumoMotoristas(dadosLocais);
+
         renderizarGraficosDinâmicos(dadosLocais);
     }
 
@@ -471,7 +709,6 @@ document.addEventListener('DOMContentLoaded', () => {
         recalcularEExibirPagina();
     }
 
-    // 8. O MOTOR DE PAGINAÇÃO
     function recalcularEExibirPagina() {
         const totalItens = dadosFiltradosAtuais.length;
         const totalPaginas = Math.ceil(totalItens / itensPorPagina) || 1;
@@ -515,7 +752,7 @@ document.addEventListener('DOMContentLoaded', () => {
         paginacaoBotoes.appendChild(btnAvancar);
     }
 
-    // 9. RENDER DA TABELA (Geral)
+    // ---------- RENDER DA TABELA GERAL (COM DETALHE) ----------
     function renderizarTabelaGeral(envios) {
         if (!tbodyGeral) return;
         tbodyGeral.innerHTML = '';
@@ -547,10 +784,10 @@ document.addEventListener('DOMContentLoaded', () => {
             Object.keys(pendenciasObj).forEach(k => { totalPendenciasCount++; });
 
             // Tempo estimado considera o restante (peças ainda faltantes)
-            const tempoEstimadoMinutos = Math.ceil(restantePecas * MINUTOS_POR_PECA);
+            const tempoEstimadoMinutosTotal = Math.ceil(restantePecas * MINUTOS_POR_PECA); // total trabalho
             const pessoasAlocadas = Number(item.pessoas_alocadas) || 1;
-            const tempoPorPessoaMin = Math.ceil(tempoEstimadoMinutos / pessoasAlocadas);
-            const tempoFormatado = formatarTempoEstimado(tempoEstimadoMinutos);
+            const tempoPorPessoaMin = Math.ceil(tempoEstimadoMinutosTotal / (pessoasAlocadas || 1));
+            const tempoFormatadoPorPessoa = formatarTempoEstimado(tempoPorPessoaMin);
 
             let statusLabel = 'Agendado';
             let statusClass = 'badge-azul';
@@ -564,9 +801,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const pendBadgeHtml = totalPendenciasCount > 0 ? `<div style="background:#ef4444; color:white; padding:2px 6px; border-radius:4px; font-size:10px; display:inline-block; margin-top:6px;">🚨 PENDÊNCIA (${totalPendenciasCount})</div>` : '';
 
-            // Mostrar informações de início/conclusão quando presentes
             const inicioInfo = item.inicio_registro ? `<div style="font-size:11px; color:#6b7280;">Início: ${item.inicio_registro} • ${item.inicio_operador || ''}</div>` : '';
-            const conclusaoInfo = item.conclusao_registro ? `<div style="font-size:11px; color:#6b7280;">Conclusão: ${item.conclusao_registro} • ${item.conclusao_operador || ''} ${item.motorista ? '• Motorista: ' + item.motorista : ''} ${item.caminhao ? '• Caminhão: ' + item.caminhao : ''}</div>` : (item.motorista || item.caminhao ? `<div style="font-size:11px; color:#6b7280;">${item.motorista ? 'Motorista: ' + item.motorista : ''} ${item.caminhao ? '• Caminhão: ' + item.caminhao : ''}</div>` : '');
+            const conclusaoInfo = item.conclusao_registro ? `<div style="font-size:11px; color:#6b7280;">Conclusão: ${item.conclusao_registro} • ${item.conclusao_operador || ''}${item.motorista ? ' • Motorista: ' + item.motorista : ''}${item.caminhao_placa ? ' • Caminhão: ' + item.caminhao_placa : ''}</div>` : (item.motorista || item.caminhao_placa ? `<div style="font-size:11px; color:#6b7280;">${item.motorista ? 'Motorista: ' + item.motorista : ''} ${item.caminhao_placa ? '• Caminhão: ' + item.caminhao_placa : ''}</div>` : '');
 
             const trPrincipal = document.createElement('tr');
             trPrincipal.style.cursor = 'pointer';
@@ -603,7 +839,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 </td>
                 <td>
                   <div class="label">Quantidade</div>
-                  <div class="value"><strong>${totalPecas}</strong> peças<br><small style="color:#6b7280;">Feitas: ${totalProgresso} — Faltam: ${restantePecas} • ⏳ Est: ${tempoFormatado} / ${pessoasAlocadas} Ops</small></div>
+                  <div class="value">
+                    <strong>${totalPecas}</strong> peças<br>
+                    <small id="estimativa-${item.id_envio}" style="color:#6b7280;"
+                           data-total="${totalPecas}"
+                           data-progresso="${totalProgresso}"
+                           data-restante="${restantePecas}"
+                    >
+                      Feitas: ${totalProgresso} — Faltam: ${restantePecas} • ⏳ Est: ${tempoFormatadoPorPessoa} / ${pessoasAlocadas} Ops
+                    </small>
+                  </div>
                 </td>
                 <td>
                   <div class="label">Galpão</div>
@@ -625,7 +870,7 @@ document.addEventListener('DOMContentLoaded', () => {
                   <div class="value text-center" onclick="event.stopPropagation()">
                     <div style="display:flex; gap:6px; justify-content:center;">
                     <button class="btn-action btn-preparar" style="padding:6px 10px;" onclick="event.stopPropagation(); window.acionarBotao('${item.id_envio}', 'Em Preparação')">Iniciar</button>
-                    <button class="btn-action primary btn-concluir" style="padding:6px 10px;" onclick="event.stopPropagation(); abrirModalConclusao('${item.id_envio}')">Concluir</button>
+                    <button class="btn-action primary btn-concluir" style="padding:6px 10px;" onclick="event.stopPropagation(); window.acionarBotao('${item.id_envio}', 'Concluído')">Concluir</button>
                     ${revertBtnHtml}
                     </div>
                   </div>
@@ -638,7 +883,7 @@ document.addEventListener('DOMContentLoaded', () => {
             trDetalhe.style.display = 'none';
             trDetalhe.style.backgroundColor = '#f8fafc';
 
-            // Render itens (se houver)
+            // Itens HTML (igual ao anterior)
             let itensHtml = '';
             const listaItens = (item.itens && Object.keys(item.itens).length > 0) ? item.itens : null;
             if (listaItens) {
@@ -666,7 +911,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             }
 
-            // Progresso parcial (lista)
+            // Progresso e Pendencias lists
             let progressoHtml = '';
             Object.keys(progressoObj || {}).forEach(key => {
                 const p = progressoObj[key];
@@ -684,7 +929,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>`;
             });
 
-            // Pendências (lista)
             let pendenciasHtml = '';
             Object.keys(pendenciasObj || {}).forEach(key => {
                 const d = pendenciasObj[key];
@@ -702,10 +946,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>`;
             });
 
-            // ------------------------------------------------------------
-            // NOVA LÓGICA: esconder Adição Rápida e Reportar Pendência quando
-            // meu_status for "Concluído", mas manter Dados de Transporte visível.
-            // ------------------------------------------------------------
             const isConcluido = statusLower === 'concluído' || statusLower === 'concluido';
 
             const adicaoSection = isConcluido ? '' : `
@@ -732,32 +972,62 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             `;
 
-            // Monta o HTML da gaveta usando as seções condicionais
+            // Dados de Transporte + dificuldade + observacao + estimativas + botões de registrar tempo
+            const valorMotorista = item.motorista || '';
+            const valorCaminhao = item.caminhao_placa || '';
+            const valorDificuldade = item.dificuldade || '';
+            const valorObservacao = item.observacao || '';
+
+            // NOTE: added ids for large estimativa elements to allow immediate updates
+            const transporteHtml = `
+                <div style="padding:12px; display:flex; flex-direction:column; gap:8px;">
+                    <div style="font-weight:700; color:#2d3748; display:flex; justify-content:space-between; align-items:center;">
+                        <span>🚚 Dados de Transporte & Meta</span>
+                        <div style="display:flex; gap:8px; align-items:center;">
+                            <button class="btn-action" style="padding:6px 8px; font-size:12px;" onclick="window.registrarTempoPreparacao('${item.id_envio}', 'inicio')">Registrar Início</button>
+                            <button class="btn-action" style="padding:6px 8px; font-size:12px;" onclick="window.registrarTempoPreparacao('${item.id_envio}', 'fim')">Registrar Fim</button>
+                            <button class="btn-action" style="padding:6px 8px; font-size:12px;" onclick="window.salvarDadosTransporte('${item.id_envio}')">Salvar</button>
+                        </div>
+                    </div>
+                    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                        <input id="input-motorista-${item.id_envio}" type="text" placeholder="Motorista" value="${(valorMotorista+'').replace(/"/g,'&quot;')}" style="flex:1; min-width:150px; padding:8px; border-radius:6px; border:1px solid #e2e8f0;">
+                        <input id="input-caminhao-${item.id_envio}" type="text" placeholder="Caminhão / Placa" value="${(valorCaminhao+'').replace(/"/g,'&quot;')}" style="width:170px; padding:8px; border-radius:6px; border:1px solid #e2e8f0;">
+                        <select id="input-dificuldade-${item.id_envio}" style="width:130px; padding:8px; border-radius:6px; border:1px solid #e2e8f0;">
+                            <option value="">Dificuldade</option>
+                            <option value="Fácil" ${valorDificuldade === 'Fácil' ? 'selected' : ''}>Fácil</option>
+                            <option value="Médio" ${valorDificuldade === 'Médio' ? 'selected' : ''}>Médio</option>
+                            <option value="Difícil" ${valorDificuldade === 'Difícil' ? 'selected' : ''}>Difícil</option>
+                        </select>
+                    </div>
+                    <div>
+                        <textarea id="textarea-observacao-${item.id_envio}" placeholder="Observação / Parenteses livre" style="width:100%; margin-top:8px; min-height:60px; padding:8px; border-radius:6px; border:1px solid #e2e8f0;">${(valorObservacao||'')}</textarea>
+                    </div>
+
+                    <div style="display:flex; gap:12px; align-items:center; margin-top:6px; font-size:13px; color:#6b7280;">
+                        <div>Estimativa (3 min/peça/pessoa): <strong id="estimativa-minutos-${item.id_envio}" data-total-minutos="${tempoEstimadoMinutosTotal}">${tempoPorPessoaMin} min</strong></div>
+                        <div>Horas estimadas (por pessoa, <span id="estimativa-ops-${item.id_envio}">${pessoasAlocadas}</span> ops): <strong id="estimativa-horas-${item.id_envio}">${(tempoPorPessoaMin/60).toFixed(1)} h</strong></div>
+                        ${item.hora_inicio_preparacao ? `<div>Início: ${item.hora_inicio_preparacao}</div>` : ''}
+                        ${item.hora_fim_preparacao ? `<div>Fim: ${item.hora_fim_preparacao}</div>` : ''}
+                    </div>
+                </div>
+            `;
+
+            // Montagem final do detalhe: inclui input de pessoas e botão Atualizar
             trDetalhe.innerHTML = `
                 <td colspan="8" style="padding:12px;">
                     <div style="background:white; border:1px solid #e2e8f0; border-radius:8px; padding:10px;">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                     <div style="font-weight:700; color:#374151;">📦 COMPOSIÇÃO & CONTROLES</div>
-                    <div style="font-size:12px; color:#6b7280;">Equipe: <input type="number" value="${pessoasAlocadas}" min="1" onchange="window.salvarMetaPrazo('${item.id_envio}', 'pessoas_alocadas', this.value)" style="width:60px; padding:4px;"></div>
+                    <div style="font-size:12px; color:#6b7280; display:flex; gap:8px; align-items:center;">
+                        Equipe: 
+                        <input id="pessoas-input-${item.id_envio}" type="number" value="${pessoasAlocadas}" min="1" style="width:60px; padding:4px; border:1px solid #cbd5e1; border-radius:4px;" onclick="event.stopPropagation()">
+                        <button class="btn-action" style="padding:6px 8px;" onclick="event.stopPropagation(); window.atualizarEquipe('${item.id_envio}')">Atualizar</button>
+                    </div>
                     </div>
                     ${itensHtml ? `<div style="margin-bottom:8px;">${itensHtml}</div>` : `<div style="font-size:12px; color:#9aa4b2; margin-bottom:8px;">Nenhuma composição de itens registrada.</div>`}
-
                     <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
-                    <div>
-                    <h4 style="margin:0 0 8px 0; font-size:13px; color:#374151;">Dados de Transporte</h4>
-                    <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
-                    <input id="input-motorista-${item.id_envio}" type="text" placeholder="Motorista (ex: João Silva)" value="${item.motorista ? item.motorista.replace(/"/g, '&quot;') : ''}" style="flex:1; padding:8px; border:1px solid #cbd5e1; border-radius:6px;" onclick="event.stopPropagation()">
-                    <input id="input-caminhao-${item.id_envio}" type="text" placeholder="Caminhão / Placa" value="${item.caminhao ? item.caminhao.replace(/"/g, '&quot;') : ''}" style="width:180px; padding:8px; border:1px solid #cbd5e1; border-radius:6px;" onclick="event.stopPropagation()">
-                    <button class="btn-action" style="padding:8px 12px;" onclick="event.stopPropagation(); window.salvarMotoristaCaminhao('${item.id_envio}')">Salvar</button>
-                    </div>
-                    <div style="font-size:12px; color:#6b7280; margin-bottom:8px;">Os campos acima podem ser alterados a qualquer momento — útil quando houver troca de motorista/caminhão.</div>
-                    <hr style="border:none; border-top:1px solid #eef2f7; margin:8px 0;">
-                    ${adicaoSection}
-                    </div>
-
-                    <div>
-                    ${pendenciaSection}
-                    </div>
+                    <div>${transporteHtml}</div>
+                    <div>${isConcluido ? `<div style="padding:10px; color:#6b7280;">Envio concluído — Adição rápida e Reportar pendência desabilitados. Dados, Dificuldade e Observação editáveis.</div>` : `${adicaoSection}${pendenciaSection}`}</div>
                     </div>
                     </div>
                 </td>
@@ -777,29 +1047,14 @@ document.addEventListener('DOMContentLoaded', () => {
             tbodyGeral.appendChild(trPrincipal);
             tbodyGeral.appendChild(trDetalhe);
         });
+
+        // ensure listeners on the "pessoas" inputs after render
+        if (typeof window.__attachPessoasListeners === 'function') {
+            setTimeout(() => { try { window.__attachPessoasListeners(); } catch(e) {} }, 30);
+        }
     }
 
-    // Função auxiliar para abrir modal de conclusão solicitando motorista (agora tenta usar campo inline)
-    window.abrirModalConclusao = function(idEnvio) {
-        // Primeiro, tenta obter o motorista do campo inline (se existir e preenchido)
-        const motoristaInput = document.getElementById(`input-motorista-${idEnvio}`);
-        const motoristaCampo = motoristaInput ? String(motoristaInput.value || '').trim() : '';
-        if (motoristaCampo) {
-            // usa diretamente
-            window.acionarBotao(idEnvio, 'Concluído', motoristaCampo);
-            return;
-        }
-        // Se não houver motorista preenchido inline, pergunta via prompt (comportamento legado)
-        const motorista = prompt('Nome do motorista (obrigatório para concluir):');
-        if (motorista === null) return; // cancelado
-        if (!String(motorista || '').trim()) {
-            alert('Nome do motorista inválido.');
-            return;
-        }
-        window.acionarBotao(idEnvio, 'Concluído', motorista.trim());
-    };
-
-    // 10. RENDER PARA TELA DE PENDÊNCIAS/AUDITORIA
+    // ---------- TABELA DE PENDÊNCIAS, GRÁFICOS E KPIs (mantidos) ----------
     function renderizarTabelaPendencias(envios) {
         if (!tbodyPendencias) return;
         tbodyPendencias.innerHTML = '';
@@ -822,7 +1077,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // 11. GRÁFICOS E KPIs
     function renderizarGraficosDinâmicos(envios) {
         try {
             const qtdAraca = envios.filter(i => String(i.galpao || '').toLowerCase().includes('araçariguama') || String(i.galpao || '').toLowerCase().includes('aracariguama')).length;
@@ -830,7 +1084,6 @@ document.addEventListener('DOMContentLoaded', () => {
             let totalDec = 0, totalRec = 0;
             envios.forEach(i => { totalDec += Number(i.unidades_declaradas) || 0; totalRec += Number(i.unidades_recebidas) || 0; });
 
-            // chart-galpoes
             const ctxG = document.getElementById('chart-galpoes');
             if (ctxG) {
                 if (chartInstanceGalpao) chartInstanceGalpao.destroy();
@@ -841,7 +1094,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             }
 
-            // chart-divergencias
             const ctxD = document.getElementById('chart-divergencias');
             if (ctxD) {
                 if (chartInstanceDivergencia) chartInstanceDivergencia.destroy();
@@ -866,7 +1118,7 @@ document.addEventListener('DOMContentLoaded', () => {
         cardDiscrepancia.innerText = dec > 0 ? `${((dec - rec) / dec * 100).toFixed(1)}%` : '0%';
     }
 
-    // EVENTOS DE TELA
+    // ---------- EVENTOS ----------
     if (filtroConta) filtroConta.addEventListener('change', filtrarEProcessarDados);
     if (filtroGalpao) filtroGalpao.addEventListener('change', filtrarEProcessarDados);
     if (ordenarData) ordenarData.addEventListener('change', filtrarEProcessarDados);
@@ -885,4 +1137,30 @@ document.addEventListener('DOMContentLoaded', () => {
 
     verificarOperador();
     carregarDadosDoBack();
+
+    // ---------- Helpers para attach de listeners nos inputs de pessoas ----------
+    window.__attachPessoasListeners = function() {
+      try {
+        document.querySelectorAll('[id^="pessoas-input-"]').forEach(inp => {
+          const id = inp.id.replace('pessoas-input-', '');
+          // remove listeners prévios (evitar duplicação)
+          try { inp.removeEventListener('change', inp.__listenerAtualizarEquipe); } catch(e) {}
+          const fn = () => { try { console.log('[listener] change pessoas for', id, 'value', inp.value); window.atualizarEquipe(id); } catch(e) {} };
+          inp.__listenerAtualizarEquipe = fn;
+          inp.addEventListener('change', fn);
+          // também aplica onkeypress Enter
+          try { inp.removeEventListener('keyup', inp.__listenerEnter); } catch(e) {}
+          const fnEnter = (e) => { if (e.key === 'Enter') { e.preventDefault(); window.atualizarEquipe(id); } };
+          inp.__listenerEnter = fnEnter;
+          inp.addEventListener('keyup', fnEnter);
+        });
+        console.log('[__attachPessoasListeners] listeners conectados em inputs de pessoas.');
+      } catch (e) {
+        console.warn('[__attachPessoasListeners] erro:', e);
+      }
+    };
+
+    // garante attach inicial caso já existam inputs (pode ser redundante)
+    setTimeout(() => { try { window.__attachPessoasListeners(); } catch(e) {} }, 200);
 });
+// end DOMContentLoaded
