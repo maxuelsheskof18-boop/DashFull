@@ -164,7 +164,7 @@ document.addEventListener('DOMContentLoaded', () => {
             .slice(0, 8)
             .map(dia => {
                 const eventos = porDia[dia].slice(0, 4).map(ev => `#${ev.idEnvio} • ${ev.hora} • ${ev.motorista}`).join('<br>');
-                return `<div style="padding:10px 0; border-bottom:1px solid #eef2f7;"><strong>${dia}</strong><div style="font-size:12px; color:#6b7280; margin-top:4px; line-height:1.4;">${eventos}</div></div>`;
+                return `<div style="padding:10px 0; border-bottom:1px solid #eef2e7;"><strong>${dia}</strong><div style="font-size:12px; color:#6b7280; margin-top:4px; line-height:1.4;">${eventos}</div></div>`;
             }).join('');
 
         corpo.innerHTML = `
@@ -172,8 +172,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div style="border:1px solid #e2e8f0; border-radius:10px; overflow:hidden;">
                     <div style="padding:10px 12px; background:#f8fafc; font-weight:700; color:#334155;">Fulls concluídos no mês atual</div>
                     <table style="width:100%; border-collapse:collapse; font-size:13px;">
-                        <thead><tr><th style="text-align:left; padding:8px 10px; color:#64748b;">Motorista</th><th style="text-align:right; padding:8px 10px; color:#64748b;">Qtd</th></tr></thead>
-                        <tbody>${ranking || '<tr><td colspan="2" style="padding:12px; color:#94a3b8;">Sem conclusões registradas neste mês.</td></tr>'}</tbody>
+                    <thead><tr><th style="text-align:left; padding:8px 10px; color:#64748b;">Motorista</th><th style="text-align:right; padding:8px 10px; color:#64748b;">Qtd</th></tr></thead>
+                    <tbody>${ranking || '<tr><td colspan="2" style="padding:12px; color:#94a3b8;">Sem conclusões registradas neste mês.</td></tr>'}</tbody>
                     </table>
                 </div>
                 <div style="border:1px solid #e2e8f0; border-radius:10px; overflow:hidden;">
@@ -399,6 +399,20 @@ document.addEventListener('DOMContentLoaded', () => {
         await carregarDadosDoBack();
     };
 
+    window.reverterParaPreparacao = async function(idEnvio) {
+        if (!confirm('Confirmar reverter o envio para "Em Preparação"?')) return;
+        const url = `${FIREBASE_BASE}/historico_envios/${idEnvio}.json`;
+        const payload = {
+            meu_status: 'Em Preparação',
+            conclusao_data: null,
+            conclusao_hora: null,
+            conclusao_operador: null,
+            conclusao_registro: null
+        };
+        await fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        await carregarDadosDoBack();
+    };
+
     // 7. FILTROS E DISTRIBUIÇÃO NA TELA
     function atualizarPainelCompleto() {
         filtrarEProcessarDados();
@@ -557,6 +571,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const trPrincipal = document.createElement('tr');
             trPrincipal.style.cursor = 'pointer';
             trPrincipal.className = 'linha-envio-mestra';
+            let revertBtnHtml = '';
+            const statusLower = String(statusHumano || '').toLowerCase();
+            if (statusLower === 'concluído' || statusLower === 'concluido') {
+                revertBtnHtml = `<button class="btn-action" style="padding:6px 10px; background:#f3f4f6; border:1px solid #e5e7eb;" onclick="event.stopPropagation(); window.reverterParaPreparacao('${item.id_envio}')">Reverter</button>`;
+            }
             trPrincipal.innerHTML = `
                 <td>
                   <div class="label">Conta</div>
@@ -574,11 +593,11 @@ document.addEventListener('DOMContentLoaded', () => {
                   <div class="label">Status Local</div>
                   <div class="value">
                     <div style="display:flex; flex-direction:column; gap:6px;">
-                      <span style="display:inline-block; background:${corBadge}; color:white; padding:4px 8px; border-radius:6px; font-weight:700; font-size:12px;">${statusHumano}</span>
-                      <div style="font-size: 11px; color: #6b7280;">👤 ${item.operador || '—'} ${item.hora_operacao ? '• ' + item.hora_operacao : ''}</div>
-                      ${inicioInfo}
-                      ${conclusaoInfo}
-                      ${pendBadgeHtml}
+                    <span style="display:inline-block; background:${corBadge}; color:white; padding:4px 8px; border-radius:6px; font-weight:700; font-size:12px;">${statusHumano}</span>
+                    <div style="font-size: 11px; color: #6b7280;">👤 ${item.operador || '—'} ${item.hora_operacao ? '• ' + item.hora_operacao : ''}</div>
+                    ${inicioInfo}
+                    ${conclusaoInfo}
+                    ${pendBadgeHtml}
                     </div>
                   </div>
                 </td>
@@ -595,9 +614,9 @@ document.addEventListener('DOMContentLoaded', () => {
                   <div class="value">
                     <div style="margin-bottom:6px;"><strong>${dataFormatada}</strong> <span style="color:#6b7280; font-size:12px;">${horaFormatada}</span></div>
                     <div style="display:flex; flex-direction:column; gap:4px; background-color: #f8fafc; padding: 6px; border-radius: 4px; border: 1px solid #e2e8f0;">
-                      <span style="font-size: 9px; font-weight: bold; color: #475569;">PRAZO INTERNO:</span>
-                      <input type="date" value="${dataLimite}" onchange="window.salvarMetaPrazo('${item.id_envio}', 'data_limite_pronto', this.value)" style="font-size:11px; padding:4px; border:1px solid #cbd5e1; border-radius:4px; outline:none;" onclick="event.stopPropagation()">
-                      <input type="time" value="${horaLimite}" onchange="window.salvarMetaPrazo('${item.id_envio}', 'hora_limite_pronto', this.value)" style="font-size:11px; padding:4px; border:1px solid #cbd5e1; border-radius:4px; outline:none;" onclick="event.stopPropagation()">
+                    <span style="font-size: 9px; font-weight: bold; color: #475569;">PRAZO INTERNO:</span>
+                    <input type="date" value="${dataLimite}" onchange="window.salvarMetaPrazo('${item.id_envio}', 'data_limite_pronto', this.value)" style="font-size:11px; padding:4px; border:1px solid #cbd5e1; border-radius:4px; outline:none;" onclick="event.stopPropagation()">
+                    <input type="time" value="${horaLimite}" onchange="window.salvarMetaPrazo('${item.id_envio}', 'hora_limite_pronto', this.value)" style="font-size:11px; padding:4px; border:1px solid #cbd5e1; border-radius:4px; outline:none;" onclick="event.stopPropagation()">
                     </div>
                   </div>
                 </td>
@@ -605,8 +624,9 @@ document.addEventListener('DOMContentLoaded', () => {
                   <div class="label">Ações</div>
                   <div class="value text-center" onclick="event.stopPropagation()">
                     <div style="display:flex; gap:6px; justify-content:center;">
-                      <button class="btn-action btn-preparar" style="padding:6px 10px;" onclick="event.stopPropagation(); window.acionarBotao('${item.id_envio}', 'Em Preparação')">Iniciar</button>
-                      <button class="btn-action primary btn-concluir" style="padding:6px 10px;" onclick="event.stopPropagation(); abrirModalConclusao('${item.id_envio}')">Concluir</button>
+                    <button class="btn-action btn-preparar" style="padding:6px 10px;" onclick="event.stopPropagation(); window.acionarBotao('${item.id_envio}', 'Em Preparação')">Iniciar</button>
+                    <button class="btn-action primary btn-concluir" style="padding:6px 10px;" onclick="event.stopPropagation(); abrirModalConclusao('${item.id_envio}')">Concluir</button>
+                    ${revertBtnHtml}
                     </div>
                   </div>
                 </td>
@@ -627,21 +647,21 @@ document.addEventListener('DOMContentLoaded', () => {
                     const checkConcluido = prod.conferido ? 'checked' : '';
                     const estiloTexto = prod.conferido ? 'text-decoration: line-through; color: #10b981;' : '';
                     itensHtml += `
-                        <div style="display:flex; justify-content:space-between; padding:8px 12px; border-bottom:1px solid #e6eef6;">
-                          <div style="display:flex; gap:10px; align-items:center;">
-                            <input type="checkbox" ${checkConcluido} onchange="window.marcarItemConferido('${item.id_envio}', '${sku}', this.checked)" style="transform:scale(1.1); cursor:pointer;">
-                            <div style="${estiloTexto}"><strong>[${sku}]</strong> ${prod.titulo || ''}</div>
-                          </div>
-                          <div style="display:flex; gap:12px; align-items:center;">
-                            <div style="font-weight:700; color:#475569;">${prod.declarado || 0} un</div>
-                            <select onchange="window.marcarDivergenciaItem('${item.id_envio}', '${sku}', this.value)" style="padding:4px; border-radius:6px; border:1px solid #cbd5e1; font-size:12px;">
-                              <option value="">Status</option>
-                              <option value="OK" ${prod.divergencia === 'OK' ? 'selected' : ''}>OK</option>
-                              <option value="Não Tem" ${prod.divergencia === 'Não Tem' ? 'selected' : ''}>Não Tem</option>
-                              <option value="Qtd Insuficiente" ${prod.divergencia === 'Qtd Insuficiente' ? 'selected' : ''}>Qtd Insuficiente</option>
-                            </select>
-                          </div>
-                        </div>
+                    <div style="display:flex; justify-content:space-between; padding:8px 12px; border-bottom:1px solid #e6eef6;">
+                    <div style="display:flex; gap:10px; align-items:center;">
+                    <input type="checkbox" ${checkConcluido} onchange="window.marcarItemConferido('${item.id_envio}', '${sku}', this.checked)" style="transform:scale(1.1); cursor:pointer;">
+                    <div style="${estiloTexto}"><strong>[${sku}]</strong> ${prod.titulo || ''}</div>
+                    </div>
+                    <div style="display:flex; gap:12px; align-items:center;">
+                    <div style="font-weight:700; color:#475569;">${prod.declarado || 0} un</div>
+                    <select onchange="window.marcarDivergenciaItem('${item.id_envio}', '${sku}', this.value)" style="padding:4px; border-radius:6px; border:1px solid #cbd5e1; font-size:12px;">
+                    <option value="">Status</option>
+                    <option value="OK" ${prod.divergencia === 'OK' ? 'selected' : ''}>OK</option>
+                    <option value="Não Tem" ${prod.divergencia === 'Não Tem' ? 'selected' : ''}>Não Tem</option>
+                    <option value="Qtd Insuficiente" ${prod.divergencia === 'Qtd Insuficiente' ? 'selected' : ''}>Qtd Insuficiente</option>
+                    </select>
+                    </div>
+                    </div>
                     `;
                 });
             }
@@ -653,14 +673,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 const ts = p.timestamp || '';
                 progressoHtml += `
                     <div style="display:flex; justify-content:space-between; padding:6px 12px; border-bottom:1px solid #f1f5f9; gap:10px;">
-                        <div style="font-size:13px; color:#374151;">
-                            <strong>${p.produto || '—'}</strong><br>
-                            <small style="color:#6b7280;">${ts}</small>
-                        </div>
-                        <div style="display:flex; gap:8px; align-items:center;">
-                            <span style="font-weight:800; color:#475569;">${p.quantidade || 0} un</span>
-                            <button class="btn-action" style="padding:6px 8px;" onclick="event.stopPropagation(); window.removerProgresso('${item.id_envio}', '${key}')">Remover</button>
-                        </div>
+                    <div style="font-size:13px; color:#374151;">
+                    <strong>${p.produto || '—'}</strong><br>
+                    <small style="color:#6b7280;">${ts}</small>
+                    </div>
+                    <div style="display:flex; gap:8px; align-items:center;">
+                    <span style="font-weight:800; color:#475569;">${p.quantidade || 0} un</span>
+                    <button class="btn-action" style="padding:6px 8px;" onclick="event.stopPropagation(); window.removerProgresso('${item.id_envio}', '${key}')">Remover</button>
+                    </div>
                     </div>`;
             });
 
@@ -671,59 +691,74 @@ document.addEventListener('DOMContentLoaded', () => {
                 const ts = d.timestamp || '';
                 pendenciasHtml += `
                     <div style="display:flex; justify-content:space-between; padding:6px 12px; border-bottom:1px solid #ffecec; gap:10px; background:#fff7f7;">
-                        <div style="font-size:13px; color:#611a15;">
-                            <strong>${d.produto || '—'}</strong><br>
-                            <small style="color:#6b7280;">${ts}</small>
-                        </div>
-                        <div style="display:flex; gap:8px; align-items:center;">
-                            <span style="font-weight:800; color:#611a15;">${d.quantidade != null ? d.quantidade + ' un' : 'Qtd não informada'}</span>
-                            <button class="btn-action" style="padding:6px 8px;" onclick="event.stopPropagation(); window.removerPendencia('${item.id_envio}', '${key}')">Remover</button>
-                        </div>
+                    <div style="font-size:13px; color:#611a15;">
+                    <strong>${d.produto || '—'}</strong><br>
+                    <small style="color:#6b7280;">${ts}</small>
+                    </div>
+                    <div style="display:flex; gap:8px; align-items:center;">
+                    <span style="font-weight:800; color:#611a15;">${d.quantidade != null ? d.quantidade + ' un' : 'Qtd não informada'}</span>
+                    <button class="btn-action" style="padding:6px 8px;" onclick="event.stopPropagation(); window.removerPendencia('${item.id_envio}', '${key}')">Remover</button>
+                    </div>
                     </div>`;
             });
 
+            // ------------------------------------------------------------
+            // NOVA LÓGICA: esconder Adição Rápida e Reportar Pendência quando
+            // meu_status for "Concluído", mas manter Dados de Transporte visível.
+            // ------------------------------------------------------------
+            const isConcluido = statusLower === 'concluído' || statusLower === 'concluido';
+
+            const adicaoSection = isConcluido ? '' : `
+                <h4 style="margin:0 0 8px 0; font-size:13px; color:#374151;">➕ Adição Rápida (Parcial)</h4>
+                <div class="adicao-rapida-inputs" style="display:flex; gap:8px; margin-bottom:8px;">
+                <input id="input-produto-${item.id_envio}" type="text" placeholder="Nome ou Código do produto" style="flex:1; padding:8px; border:1px solid #cbd5e1; border-radius:6px;" onclick="event.stopPropagation()">
+                <input id="input-quant-${item.id_envio}" type="number" min="1" placeholder="Qtd feita" style="width:110px; padding:8px; border:1px solid #cbd5e1; border-radius:6px;" onclick="event.stopPropagation()">
+                <button class="btn-action primary" style="padding:8px 12px;" onclick="event.stopPropagation(); window.adicionarProgresso('${item.id_envio}', document.getElementById('input-produto-${item.id_envio}').value, document.getElementById('input-quant-${item.id_envio}').value);">Adicionar</button>
+                </div>
+                <div class="adicao-rapida-list" style="max-height:160px; overflow:auto; border:1px solid #eef2f7; border-radius:6px;">
+                ${progressoHtml || '<div style="padding:8px; color:#9aa4b2;">Nenhum registro de produção parcial.</div>'}
+                </div>
+            `;
+
+            const pendenciaSection = isConcluido ? '' : `
+                <h4 style="margin:0 0 8px 0; font-size:13px; color:#611a15;">🚨 Reportar Pendência</h4>
+                <div class="reportar-pendencia-inputs" style="display:flex; gap:8px; margin-bottom:8px;">
+                <input id="input-pend-prod-${item.id_envio}" type="text" placeholder="Produto ausente / código" style="flex:1; padding:8px; border:1px solid #f5c6cb; border-radius:6px;" onclick="event.stopPropagation()">
+                <input id="input-pend-quant-${item.id_envio}" type="number" min="0" placeholder="Qtd faltando" style="width:110px; padding:8px; border:1px solid #f5c6cb; border-radius:6px;" onclick="event.stopPropagation()">
+                <button class="btn-action" style="padding:8px 12px; background:#ef4444; color:white; border:none; border-radius:6px;" onclick="event.stopPropagation(); window.reportarPendencia('${item.id_envio}', document.getElementById('input-pend-prod-${item.id_envio}').value, document.getElementById('input-pend-quant-${item.id_envio}').value);">Reportar</button>
+                </div>
+                <div class="reportar-pendencia-list" style="max-height:160px; overflow:auto; border:1px solid #ffebeb; border-radius:6px;">
+                ${pendenciasHtml || '<div style="padding:8px; color:#9aa4b2;">Nenhuma pendência reportada.</div>'}
+                </div>
+            `;
+
+            // Monta o HTML da gaveta usando as seções condicionais
             trDetalhe.innerHTML = `
                 <td colspan="8" style="padding:12px;">
                     <div style="background:white; border:1px solid #e2e8f0; border-radius:8px; padding:10px;">
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                            <div style="font-weight:700; color:#374151;">📦 COMPOSIÇÃO & CONTROLES</div>
-                            <div style="font-size:12px; color:#6b7280;">Equipe: <input type="number" value="${pessoasAlocadas}" min="1" onchange="window.salvarMetaPrazo('${item.id_envio}', 'pessoas_alocadas', this.value)" style="width:60px; padding:4px;"></div>
-                        </div>
-                        ${itensHtml ? `<div style="margin-bottom:8px;">${itensHtml}</div>` : `<div style="font-size:12px; color:#9aa4b2; margin-bottom:8px;">Nenhuma composição de itens registrada.</div>`}
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                    <div style="font-weight:700; color:#374151;">📦 COMPOSIÇÃO & CONTROLES</div>
+                    <div style="font-size:12px; color:#6b7280;">Equipe: <input type="number" value="${pessoasAlocadas}" min="1" onchange="window.salvarMetaPrazo('${item.id_envio}', 'pessoas_alocadas', this.value)" style="width:60px; padding:4px;"></div>
+                    </div>
+                    ${itensHtml ? `<div style="margin-bottom:8px;">${itensHtml}</div>` : `<div style="font-size:12px; color:#9aa4b2; margin-bottom:8px;">Nenhuma composição de itens registrada.</div>`}
 
-                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
-                            <div>
-                                <h4 style="margin:0 0 8px 0; font-size:13px; color:#374151;">Dados de Transporte</h4>
-                                <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
-                                    <input id="input-motorista-${item.id_envio}" type="text" placeholder="Motorista (ex: João Silva)" value="${item.motorista ? item.motorista.replace(/"/g, '&quot;') : ''}" style="flex:1; padding:8px; border:1px solid #cbd5e1; border-radius:6px;" onclick="event.stopPropagation()">
-                                    <input id="input-caminhao-${item.id_envio}" type="text" placeholder="Caminhão / Placa" value="${item.caminhao ? item.caminhao.replace(/"/g, '&quot;') : ''}" style="width:180px; padding:8px; border:1px solid #cbd5e1; border-radius:6px;" onclick="event.stopPropagation()">
-                                    <button class="btn-action" style="padding:8px 12px;" onclick="event.stopPropagation(); window.salvarMotoristaCaminhao('${item.id_envio}')">Salvar</button>
-                                </div>
-                                <div style="font-size:12px; color:#6b7280; margin-bottom:8px;">Os campos acima podem ser alterados a qualquer momento — útil quando houver troca de motorista/caminhão.</div>
-                                <hr style="border:none; border-top:1px solid #eef2f7; margin:8px 0;">
-                                <h4 style="margin:0 0 8px 0; font-size:13px; color:#374151;">➕ Adição Rápida (Parcial)</h4>
-                                <div style="display:flex; gap:8px; margin-bottom:8px;">
-                                    <input id="input-produto-${item.id_envio}" type="text" placeholder="Nome ou Código do produto" style="flex:1; padding:8px; border:1px solid #cbd5e1; border-radius:6px;" onclick="event.stopPropagation()">
-                                    <input id="input-quant-${item.id_envio}" type="number" min="1" placeholder="Qtd feita" style="width:110px; padding:8px; border:1px solid #cbd5e1; border-radius:6px;" onclick="event.stopPropagation()">
-                                    <button class="btn-action primary" style="padding:8px 12px;" onclick="event.stopPropagation(); window.adicionarProgresso('${item.id_envio}', document.getElementById('input-produto-${item.id_envio}').value, document.getElementById('input-quant-${item.id_envio}').value);">Adicionar</button>
-                                </div>
-                                <div style="max-height:160px; overflow:auto; border:1px solid #eef2f7; border-radius:6px;">
-                                    ${progressoHtml || '<div style="padding:8px; color:#9aa4b2;">Nenhum registro de produção parcial.</div>'}
-                                </div>
-                            </div>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+                    <div>
+                    <h4 style="margin:0 0 8px 0; font-size:13px; color:#374151;">Dados de Transporte</h4>
+                    <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
+                    <input id="input-motorista-${item.id_envio}" type="text" placeholder="Motorista (ex: João Silva)" value="${item.motorista ? item.motorista.replace(/"/g, '&quot;') : ''}" style="flex:1; padding:8px; border:1px solid #cbd5e1; border-radius:6px;" onclick="event.stopPropagation()">
+                    <input id="input-caminhao-${item.id_envio}" type="text" placeholder="Caminhão / Placa" value="${item.caminhao ? item.caminhao.replace(/"/g, '&quot;') : ''}" style="width:180px; padding:8px; border:1px solid #cbd5e1; border-radius:6px;" onclick="event.stopPropagation()">
+                    <button class="btn-action" style="padding:8px 12px;" onclick="event.stopPropagation(); window.salvarMotoristaCaminhao('${item.id_envio}')">Salvar</button>
+                    </div>
+                    <div style="font-size:12px; color:#6b7280; margin-bottom:8px;">Os campos acima podem ser alterados a qualquer momento — útil quando houver troca de motorista/caminhão.</div>
+                    <hr style="border:none; border-top:1px solid #eef2f7; margin:8px 0;">
+                    ${adicaoSection}
+                    </div>
 
-                            <div>
-                                <h4 style="margin:0 0 8px 0; font-size:13px; color:#611a15;">🚨 Reportar Pendência</h4>
-                                <div style="display:flex; gap:8px; margin-bottom:8px;">
-                                    <input id="input-pend-prod-${item.id_envio}" type="text" placeholder="Produto ausente / código" style="flex:1; padding:8px; border:1px solid #f5c6cb; border-radius:6px;" onclick="event.stopPropagation()">
-                                    <input id="input-pend-quant-${item.id_envio}" type="number" min="0" placeholder="Qtd faltando" style="width:110px; padding:8px; border:1px solid #f5c6cb; border-radius:6px;" onclick="event.stopPropagation()">
-                                    <button class="btn-action" style="padding:8px 12px; background:#ef4444; color:white; border:none; border-radius:6px;" onclick="event.stopPropagation(); window.reportarPendencia('${item.id_envio}', document.getElementById('input-pend-prod-${item.id_envio}').value, document.getElementById('input-pend-quant-${item.id_envio}').value);">Reportar</button>
-                                </div>
-                                <div style="max-height:160px; overflow:auto; border:1px solid #ffebeb; border-radius:6px;">
-                                    ${pendenciasHtml || '<div style="padding:8px; color:#9aa4b2;">Nenhuma pendência reportada.</div>'}
-                                </div>
-                            </div>
-                        </div>
+                    <div>
+                    ${pendenciaSection}
+                    </div>
+                    </div>
                     </div>
                 </td>
             `;
