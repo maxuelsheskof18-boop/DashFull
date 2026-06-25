@@ -1,14 +1,20 @@
-import puppeteer from 'puppeteer-core';
-import chromium from '@sparticuz/chromium';
+const puppeteer = require('puppeteer-core');
+const chromium = require('@sparticuz/chromium');
 
-export default async function handler(req, res) {
-  // Configuração de CORS
+module.exports = async function (req, res) {
+  // Configuração de CORS para permitir que o Google Apps Script chame essa API
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  if (req.method === 'OPTIONS') { return res.status(200).end(); }
-  if (req.method !== 'POST') { return res.status(405).json({ error: 'Use o método POST' }); }
+  // Responde imediatamente a requisições de preflight (segurança do navegador)
+  if (req.method === 'OPTIONS') { 
+    return res.status(200).end(); 
+  }
+  
+  if (req.method !== 'POST') { 
+    return res.status(405).json({ error: 'Use o método POST' }); 
+  }
 
   const { idEnvio, cookie } = req.body;
 
@@ -19,7 +25,7 @@ export default async function handler(req, res) {
   let browser = null;
 
   try {
-    // Inicia o Chrome invisível otimizado para Vercel
+    // Inicia o Chrome invisível otimizado
     browser = await puppeteer.launch({
       args: chromium.args,
       defaultViewport: chromium.defaultViewport,
@@ -30,28 +36,29 @@ export default async function handler(req, res) {
 
     const page = await browser.newPage();
     
-    // Injeta os seus cookies para o Mercado Livre reconhecer a sessão
+    // Formata e injeta os cookies
     const cookieObjects = cookie.split(';').map(c => {
       const parts = c.trim().split('=');
       const name = parts.shift();
       const value = parts.join('=');
       return { name, value, domain: '.mercadolivre.com.br', path: '/' };
-    }).filter(c => c.name !== ""); // Remove itens vazios
+    }).filter(c => c.name !== ""); 
 
     await page.setCookie(...cookieObjects);
 
-    // Navega até a página e aguarda a rede se acalmar
     const url = `https://myaccount.mercadolivre.com.br/shipping/inbounds/${idEnvio}/units`;
-    await page.goto(url, { waitUntil: 'networkidle2', timeout: 10000 });
+    
+    // timeout reduzido para não estourar o limite de 10s da Vercel Hobby
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 8000 });
 
-    // Roda um script dentro do navegador para pescar os produtos
     const data = await page.evaluate(() => {
       const html = document.documentElement.innerHTML;
       const match = html.match(/_n\.ctx\.r\s*=\s*({.+?});/s);
       
       if (match && match[1]) {
          const ssrData = JSON.parse(match[1]);
-         return ssrData?.appProps?.pageProps?.data?.units || [];
+         const units = ssrData && ssrData.appProps && ssrData.appProps.pageProps && ssrData.appProps.pageProps.data ? ssrData.appProps.pageProps.data.units : [];
+         return units;
       }
       return [];
     });
@@ -61,6 +68,6 @@ export default async function handler(req, res) {
 
   } catch (error) {
     if (browser) await browser.close();
-    return res.status(500).json({ error: error.message });
+    return res.status(500).json({ error: "Erro interno no Puppeteer: " + error.message });
   }
-}
+};
