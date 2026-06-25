@@ -6,7 +6,7 @@
   --color-yellow: #fff159;
   --text-dark: #1f2937;
   --text-muted: #6b7280;
-  
+
   --success: #0f9d58;
   --success-bg: #e6f6ee;
   --warning: #f39c12;
@@ -16,36 +16,37 @@
   --border: #e5e7eb;
 }
 
-* { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; }
+* { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale; }
+
+html, body { height: 100%; }
 
 body { background-color: var(--bg-app); color: var(--text-dark); height: 100vh; overflow: hidden; }
 .app-layout { display: flex; width: 100%; height: 100vh; }
 
-/* 📊 BARRA LATERAL TRANSICIONAL (SIDEBAR) */
-.sidebar { width: 260px; background-color: var(--bg-sidebar); color: #ffffff; display: flex; flex-direction: column; padding: 24px 0; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); position: relative; }
+/* SIDEBAR */
+.sidebar { width: 260px; background-color: var(--bg-sidebar); color: #ffff; display: flex; flex-direction: column; padding: 24px 0; transition: all 0.3s cubic-bezier(0.4,0,0.2,1); position: relative; }
 .sidebar-brand { display: flex; align-items: center; justify-content: space-between; padding: 0 20px 24px 24px; border-bottom: 1px solid #2d3748; overflow: hidden; }
 .brand-info { display: flex; align-items: center; }
 .logo-icon { font-size: 24px; color: var(--color-yellow); margin-right: 12px; transition: margin 0.3s; }
 .sidebar-brand h2 { font-size: 20px; font-weight: 800; letter-spacing: -0.5px; opacity: 1; transition: opacity 0.2s; white-space: nowrap; }
 
-/* Botão de recolher menu */
 .btn-sidebar-toggle { background: transparent; border: none; color: #a0aec0; cursor: pointer; font-size: 14px; width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center; transition: background 0.2s; }
 .btn-sidebar-toggle:hover { background: var(--bg-sidebar-hover); color: #fff; }
 
-.sidebar-menu { list-style: none; margin-top: 24px; flex-grow: 1; }
+.sidebar-menu { list-style: none; margin-top: 24px; flex-grow: 1; overflow: auto; padding-bottom: 12px; }
 .sidebar-menu .menu-item { padding: 14px 24px; display: flex; align-items: center; font-size: 15px; color: #a0aec0; cursor: pointer; transition: all 0.2s ease; border-left: 4px solid transparent; }
 .sidebar-menu .menu-item i { margin-right: 14px; font-size: 16px; width: 20px; text-align: center; }
 .sidebar-menu .menu-item span { opacity: 1; transition: opacity 0.2s; white-space: nowrap; }
-.sidebar-menu .menu-item:hover, .sidebar-menu .menu-item.active { color: #ffffff; background-color: var(--bg-sidebar-hover); border-left-color: var(--color-blue); }
+.sidebar-menu .menu-item:hover, .sidebar-menu .menu-item.active { color: #ffff; background-color: var(--bg-sidebar-hover); border-left-color: var(--color-blue); }
 .nav-badge { margin-left: auto; background-color: var(--danger); color: #fff; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 10px; opacity: 1; transition: opacity 0.2s; }
 
 .sidebar-footer { padding: 0 24px; font-size: 12px; color: #718096; display: flex; align-items: center; overflow: hidden; }
 .dot-online { width: 8px; height: 8px; background-color: var(--success); border-radius: 50%; margin-right: 8px; display: inline-block; flex-shrink: 0; }
 .footer-text { white-space: nowrap; opacity: 1; transition: opacity 0.2s; }
 
-/* 🥷 ESTADOS DO MENU RECOLHIDO (COLLAPSED) */
+/* COLLAPSED */
 .sidebar.collapsed { width: 70px; }
-.sidebar.collapsed .sidebar-brand h2, 
+.sidebar.collapsed .sidebar-brand h2,
 .sidebar.collapsed .sidebar-menu .menu-item span,
 .sidebar.collapsed .nav-badge,
 .sidebar.collapsed .footer-text { opacity: 0; pointer-events: none; width: 0; display: none; }
@@ -54,8 +55,8 @@ body { background-color: var(--bg-app); color: var(--text-dark); height: 100vh; 
 .sidebar.collapsed .brand-info { justify-content: center; }
 .sidebar.collapsed .btn-sidebar-toggle { position: absolute; bottom: 15px; left: 50%; transform: translateX(-50%); }
 
-/* 🚀 CONTEÚDO PRINCIPAL */
-.main-content { flex-grow: 1; padding: 24px 32px; overflow-y: auto; display: flex; flex-direction: column; gap: 24px; }
+/* MAIN */
+.main-content { flex-grow: 1; padding: 24px 32px; overflow-y: auto; display: flex; flex-direction: column; gap: 24px; -webkit-overflow-scrolling: touch; }
 
 /* HEADER */
 .main-header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 16px; border-bottom: 1px solid var(--border); flex-wrap: wrap; gap: 16px; }
@@ -65,15 +66,15 @@ body { background-color: var(--bg-app); color: var(--text-dark); height: 100vh; 
 .header-controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .search-box { position: relative; display: flex; align-items: center; }
 .search-box i { position: absolute; left: 12px; color: var(--text-muted); font-size: 13px; }
-.search-box input { padding: 8px 12px 8px 34px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; width: 180px; outline: none; transition: all 0.2s; background-color: #fff; }
-.search-box input:focus { border-color: var(--color-blue); width: 220px; }
+.search-box input { padding: 8px 12px 8px 36px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; width: 220px; outline: none; transition: all 0.2s; background-color: #fff; }
+.search-box input:focus { border-color: var(--color-blue); width: 260px; }
 
 .header-select { padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; background: #fff; outline: none; cursor: pointer; color: var(--text-dark); font-weight: 600; }
 .header-meta { display: flex; align-items: center; gap: 10px; }
 .sync-badge { background-color: var(--success-bg); color: var(--success); font-size: 11px; font-weight: 700; padding: 5px 10px; border-radius: 6px; white-space: nowrap; }
 .clock { background: #fff; padding: 6px 12px; border-radius: 6px; font-weight: 700; font-size: 13px; border: 1px solid var(--border); }
 
-/* 📊 ANALYTICS */
+/* ANALYTICS */
 .analytics-grid { display: grid; grid-template-columns: 4fr 6fr; gap: 20px; }
 .chart-card { background: #fff; border-radius: 12px; padding: 20px; border: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
 .chart-card h3 { font-size: 15px; font-weight: 700; margin-bottom: 16px; color: var(--text-dark); }
@@ -91,22 +92,22 @@ body { background-color: var(--bg-app); color: var(--text-dark); height: 100vh; 
 .kpi-data h2 { font-size: 22px; font-weight: 800; margin-top: 2px; letter-spacing: -0.5px; }
 
 /* PILLS */
-.pills-bar { display: flex; gap: 8px; padding-bottom: 4px; border-bottom: 1px solid var(--border); }
+.pills-bar { display: flex; gap: 8px; padding-bottom: 4px; border-bottom: 1px solid var(--border); overflow: hidden; }
 .pill { background: #fff; border: 1px solid var(--border); padding: 8px 16px; border-radius: 20px; font-size: 13px; font-weight: 700; cursor: pointer; color: var(--text-dark); transition: all 0.15s ease; }
 .pill span { color: var(--text-muted); font-weight: 500; font-size: 12px; margin-left: 2px; }
 .pill:hover { border-color: var(--color-blue); color: var(--color-blue); }
 .pill.active { background-color: #e3f2fd; border-color: var(--color-blue); color: var(--color-blue); }
 .pill.active span { color: var(--color-blue); font-weight: 700; }
 
-/* PAINÉIS & TABELAS */
+/* PANELS & TABLES */
 .panel-card { background: #fff; border-radius: 12px; border: 1px solid var(--border); overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05); display: flex; flex-direction: column; }
 .panel-card-header { padding: 16px 20px; border-bottom: 1px solid var(--border); background-color: #fafafa; }
 .panel-card-header h3 { font-size: 15px; font-weight: 700; }
 
-.table-responsive { width: 100%; overflow-x: auto; }
-.premium-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 14px; white-space: nowrap; }
-.premium-table th { padding: 14px 20px; background-color: #f9fafb; color: #4b5563; font-weight: 700; font-size: 11px; text-transform: uppercase; border-bottom: 1px solid var(--border); }
-.premium-table td { padding: 12px 20px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.table-responsive { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.premium-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 14px; white-space: nowrap; min-width: 980px; }
+.premium-table th { padding: 14px 20px; background-color: #f9fafb; color: #4b5563; font-weight: 700; font-size: 11px; text-transform: uppercase; border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 2; }
+.premium-table td { padding: 12px 20px; border-bottom: 1px solid var(--border); vertical-align: middle; background: transparent; }
 .premium-table tbody tr:hover { background-color: #f9fafb; }
 
 /* Status Badges */
@@ -120,12 +121,12 @@ body { background-color: var(--bg-app); color: var(--text-dark); height: 100vh; 
 .galpao-tag { background-color: #f3f4f6; padding: 4px 10px; border-radius: 6px; font-weight: 700; font-size: 12px; color: #4b5563; }
 .texto-danger { color: var(--danger); font-weight: 700; display: inline-flex; align-items: center; gap: 4px; }
 
-/* Botões */
-.btn-action { padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 700; cursor: pointer; border: 1px solid var(--border); background: #fff; margin-right: 4px; transition: all 0.1s; }
+/* BUTTONS */
+.btn-action { padding: 8px 12px; border-radius: 6px; font-size: 13px; font-weight: 700; cursor: pointer; border: 1px solid var(--border); background: #fff; margin-right: 4px; transition: transform 0.08s ease; min-width: 72px; }
 .btn-action.primary { background-color: var(--color-blue); color: #fff; border-color: var(--color-blue); }
-.btn-action:hover { transform: translateY(-1px); box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+.btn-action:hover { transform: translateY(-2px); box-shadow: 0 6px 14px rgba(52,131,250,0.08); }
 
-/* 🔢 PAGINAÇÃO FOCO OPERACIONAL */
+/* PAGINATION */
 .pagination-footer { display: flex; justify-content: space-between; align-items: center; padding: 14px 20px; border-top: 1px solid var(--border); background: #fdfdfd; flex-wrap: wrap; gap: 12px; }
 .pagination-info { font-size: 13px; color: var(--text-muted); font-weight: 500; }
 .pagination-buttons { display: flex; gap: 4px; }
@@ -141,206 +142,120 @@ body { background-color: var(--bg-app); color: var(--text-dark); height: 100vh; 
 .alert-box-warning i { font-size: 20px; color: var(--warning); }
 .alert-box-warning h4 { font-size: 14px; font-weight: 700; color: #92400e; }
 .alert-box-warning p { font-size: 13px; color: #b45309; margin-top: 2px; }
-/* ==========================================================================
-   📱 ULTRA RESPONSIVIDADE (MEDIA QUERIES) - DASHFULL PREMIUM
-   ========================================================================== */
 
-/* 💻 1. Notebooks e Monitores Menores (Ajuste de Gráficos) */
+/* MODAL OPERADOR */
+#modal-operador {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  background-color: rgba(0,0,0,0.72) !important;
+  display: flex;
+  justify-content: center !important;
+  align-items: center !important;
+  z-index: 9999 !important;
+  backdrop-filter: blur(3px);
+}
+#modal-operador > div { width: 92%; max-width: 420px; padding: 30px; border-radius: 12px; background:#fff; box-shadow: 0 10px 30px rgba(0,0,0,0.25); }
+
+/* ---------------------------------------------------------------------
+   RESPONSIVIDADE APERFEIÇOADA
+   - Tocar melhor: alvos maiores, inputs full-width, tabela legível
+   - Transformação da tabela em linhas/card-like quando a tela for estreita
+   ------------------------------------------------------------------*/
+
+/* Large tablets -> stack charts */
 @media (max-width: 1200px) {
-  .analytics-grid {
-    grid-template-columns: 1fr; /* Gráficos ficam um embaixo do outro */
-  }
-  .chart-wrapper {
-    height: 200px; /* Dá mais altura útil para os gráficos respirarem */
-  }
+  .analytics-grid { grid-template-columns: 1fr; }
+  .chart-wrapper { height: 220px; }
 }
 
-/* 📐 2. Tablets (Ajuste de Cards e Controles) */
+/* Medium screens */
 @media (max-width: 1024px) {
-  .kpi-row {
-    grid-template-columns: repeat(2, 1fr); /* KPIs viram matriz 2x2 elegante */
-  }
-  .header-controls {
-    gap: 10px;
-  }
-  .search-box input {
-    width: 160px;
-  }
+  .kpi-row { grid-template-columns: repeat(2,1fr); }
+  .search-box input { width: 180px; }
 }
 
-/* 📱 3. Smartphones (Foco Total em Telas de Celular) */
+/* Mobile: layout vertical, melhores alvos, tabela empilhada */
 @media (max-width: 768px) {
-  /* 📊 Força a Sidebar a virar uma barra de ícones compacta na esquerda */
-  .sidebar {
-    width: 70px !important;
-  }
-  .sidebar .sidebar-brand h2, 
+  /* Sidebar compressed */
+  .sidebar { width: 70px !important; }
+  .sidebar .sidebar-brand h2,
   .sidebar .sidebar-menu .menu-item span,
   .sidebar .nav-badge,
-  .sidebar .sidebar-footer .footer-text {
-    display: none !important; /* Esconde os textos para dar espaço útil */
-  }
-  .sidebar .logo-icon {
-    margin-right: 0 !important;
-  }
-  .sidebar .sidebar-brand {
-    padding: 0 0 20px 0 !important;
-    justify-content: center !important;
-  }
-  .sidebar .btn-sidebar-toggle {
-    display: none !important; /* Remove o botão de seta física no mobile */
-  }
+  .sidebar .sidebar-footer .footer-text { display: none !important; }
+  .sidebar .btn-sidebar-toggle { display: none !important; }
 
-  /* 🚀 Ajustes da Área de Conteúdo */
-  .main-content {
-    padding: 16px !important; /* Margem mais fina para sobrar espaço */
-    gap: 16px !important;
-  }
+  .main-content { padding: 14px !important; gap: 14px !important; }
+  .main-header { flex-direction: column; align-items: flex-start; gap: 12px; }
+  .header-controls { width: 100%; flex-direction: column; align-items: stretch; gap: 8px; }
+  .search-box input { width: 100% !important; }
+  .header-select { width: 100%; }
 
-  /* Empilhamento inteligente do Cabeçalho e Filtros */
-  .main-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 14px;
-  }
-  .header-controls {
-    width: 100%;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 8px;
-  }
-  .search-box input {
-    width: 100% !important; /* Input de busca ocupa a largura total */
-  }
-  .header-select {
-    width: 100%; /* Seletores de conta e galpão ocupam a linha inteira */
-  }
-  .header-meta {
-    justify-content: space-between;
-    width: 100%;
-    margin-top: 4px;
-  }
+  .kpi-row { grid-template-columns: 1fr; }
+  .pills-bar { overflow-x: auto; white-space: nowrap; padding-bottom: 8px; }
+  .pills-bar::-webkit-scrollbar { height: 4px; }
+  .pills-bar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
 
-  /* KPIs em lista vertical */
-  .kpi-row {
-    grid-template-columns: 1fr; /* Um card por linha para leitura rápida */
-  }
+  .pill { padding: 6px 12px; font-size: 12px; flex-shrink: 0; }
 
-  /* 🎛️ Scroll de dedo horizontal nas abas rápidas (Pills) */
-  .pills-bar {
-    overflow-x: auto; /* Permite arrastar os filtros pro lado se a tela for estreita */
-    white-space: nowrap;
-    padding-bottom: 8px;
-  }
-  .pills-bar::-webkit-scrollbar {
-    height: 4px; /* Barra de rolagem super fina e discreta */
-  }
-  .pills-bar::-webkit-scrollbar-thumb {
-    background: #cbd5e1;
-    border-radius: 4px;
-  }
-  .pill {
-    padding: 6px 14px;
-    font-size: 12px;
-    flex-shrink: 0; /* Impede os botões de esmagarem o texto */
-  }
+  /* Tornar tabela touch-friendly: ocultar o header e empilhar células */
+  .premium-table { min-width: 0; white-space: normal; }
+  .premium-table thead { display: none; }
+  .premium-table, .premium-table tbody, .premium-table tr, .premium-table td { display: block; width: 100%; }
+  .premium-table tr { margin-bottom: 12px; border-radius: 8px; overflow: hidden; background: #fff; box-shadow: 0 3px 10px rgba(16,24,40,0.04); border: 1px solid var(--border); }
+  .premium-table td { padding: 10px 12px; border-bottom: none; display: flex; flex-direction: column; gap: 6px; }
+  .premium-table td .label { font-size: 12px; color: var(--text-muted); font-weight: 700; }
+  .premium-table td .value { font-size: 14px; font-weight: 800; color: var(--text-dark); }
 
-  /* Ajuste Fino na Paginação do Rodapé */
-  .pagination-footer {
-    flex-direction: column;
-    text-align: center;
-    gap: 12px;
-  }
-}
-/* =========================================================
-   🪟 1. TELA DO OPERADOR CENTRALIZADA (MODAL)
-========================================================= */
-#modal-operador {
-    position: fixed !important;
-    top: 0 !important;
-    left: 0 !important;
-    width: 100vw !important;
-    height: 100vh !important;
-    background-color: rgba(0, 0, 0, 0.85) !important; /* Fundo escurecido */
-    display: flex; /* O JS muda para 'none' quando ele loga */
-    justify-content: center !important;
-    align-items: center !important;
-    z-index: 99999 !important; /* Força a ficar por cima de tudo no site */
-    backdrop-filter: blur(4px); /* Dá um efeito de desfoque chique no fundo */
+  /* Ajuste dos botões para toque */
+  .btn-action { padding: 10px 12px; font-size: 14px; min-width: unset; display: inline-block; width: auto; }
+  .btn-action.primary { padding: 10px 12px; }
+
+  /* Linha detalhe em mobile: sempre visível como bloco quando expandida */
+  .linha-detalhe-itens td { padding: 12px !important; background: #f8fafc; }
+
+  /* Inputs no detalhe ocupam largura total para toques */
+  .linha-detalhe-itens input[type="text"],
+  .linha-detalhe-itens input[type="number"],
+  .linha-detalhe-itens input[type="time"],
+  .linha-detalhe-itens input[type="date"],
+  .linha-detalhe-itens select,
+  .linha-detalhe-itens button { width: 100% !important; box-sizing: border-box; }
+
+  .chart-wrapper { height: 220px; }
 }
 
-/* Aplica o formato de cartão branco ao redor do input e botão */
-#modal-operador > div {
-    background: #ffffff;
-    padding: 30px;
-    border-radius: 12px;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-    width: 90%;
-    max-width: 400px;
-    text-align: center;
-    animation: popIn 0.3s ease-out;
+/* Extra small phones — compact and bigger targets */
+@media (max-width: 480px) {
+  .header-info h1 { font-size: 18px; }
+  .header-info p { font-size: 13px; }
+  .search-box input { padding: 10px 12px 10px 40px; }
+  .chart-wrapper { height: 200px; }
+
+  .premium-table tr { margin-bottom: 10px; }
+  .premium-table td { padding: 10px; }
+
+  .kpi-card { padding: 14px; }
+  .kpi-data h2 { font-size: 18px; }
+
+  /* Make toggles and icons touch-friendly */
+  .menu-item { padding: 12px !important; font-size: 14px; }
+  .sidebar { padding: 16px 0; }
 }
 
-@keyframes popIn {
-    0% { transform: scale(0.9); opacity: 0; }
-    100% { transform: scale(1); opacity: 1; }
-}
+/* Accessibility improvements */
+a, button, input, select, textarea { -webkit-tap-highlight-color: rgba(0,0,0,0.06); }
+button:focus, input:focus, select:focus, textarea:focus { outline: 3px solid rgba(52,131,250,0.12); outline-offset: 2px; }
 
-/* =========================================================
-   📱 2. RESPONSIVIDADE TOTAL (CELULARES E TABLETS MINIMIZADOS)
-========================================================= */
-@media (max-width: 768px) {
-    
-    /* Empilha os Cards de KPI (Envios, Declarado, etc) um em cima do outro */
-    .kpi-container,
-    .cards-wrapper,
-    .dashboard-cards {
-        display: flex !important;
-        flex-direction: column !important;
-        gap: 15px !important;
-    }
+/* Small helper classes used by JS-rendered detail blocks (keeps look consistent) */
+.detail-row-controls { display:flex; gap:8px; flex-wrap:wrap; }
+.detail-row-controls .full-width { flex: 1 1 100%; }
 
-    /* Empilha os Filtros de Busca para não espremer a tela */
-    .filtros-container,
-    .filters-bar {
-        display: flex !important;
-        flex-direction: column !important;
-        gap: 10px !important;
-    }
+/* Keep charts responsive */
+canvas { max-width: 100% !important; height: auto !important; }
 
-    .filtros-container input,
-    .filtros-container select {
-        width: 100% !important; /* Estica os filtros de ponta a ponta */
-    }
-
-    /* Cria uma rolagem lateral exclusiva para a tabela */
-    /* Isso impede que a tabela quebre o site no celular */
-    .table-responsive,
-    .table-container,
-    .tabela-wrapper {
-        overflow-x: auto !important;
-        -webkit-overflow-scrolling: touch !important;
-        width: 100% !important;
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
-    }
-
-    /* Reduz um pouco o tamanho da fonte na tabela para caber mais */
-    table {
-        font-size: 13px !important;
-        white-space: nowrap !important; /* Impede que o texto pule de linha */
-    }
-
-    /* Ajusta a barra de Pills (Todos, Finalizados, Agendados) */
-    .pills-bar {
-        overflow-x: auto !important;
-        white-space: nowrap !important;
-        padding-bottom: 5px;
-    }
-
-    /* Empilha os gráficos para não ficarem minúsculos */
-    .charts-container {
-        display: flex !important;
-        flex-direction: column !important;
-    }
-}
+/* Tiny polished touches */
+.panel-card { transition: box-shadow 0.12s ease, transform 0.08s ease; }
+.panel-card:hover { transform: translateY(-2px); box-shadow: 0 12px 30px rgba(16,24,40,0.06); }
