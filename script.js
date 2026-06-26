@@ -50,7 +50,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let chartInstanceGalpao = null;
     let chartInstanceDivergencia = null;
 
-    // ---------- UTILITÁRIOS ----------
+    // ---- UTILITÁRIOS ----
     function formatarTempoEstimado(totalMinutos) {
         const minutosTotais = Math.max(0, Math.round(Number(totalMinutos) || 0));
         const dias = Math.floor(minutosTotais / 1440);
@@ -64,7 +64,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return partes.join(' ');
     }
 
-    // ---------- RESUMO DE MOTORISTAS (com minimizar + seletor de mês) ----------
+    // ---- RESUMO DE MOTORISTAS (com minimizar + seletor de mês) ----
     function garantirPillsExtras() {
         if (!document.querySelector('.pills-bar')) return;
 
@@ -248,7 +248,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     garantirPillsExtras();
 
-    // ---------- LOGIN DO OPERADOR ----------
+    // ---- LOGIN DO OPERADOR ----
     function verificarOperador() {
         const salvo = localStorage.getItem('dashfull_operador');
         if (salvo && salvo.trim() !== '') {
@@ -284,7 +284,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // ---------- SIDEBAR & MOBILE ----------
+    // ---- SIDEBAR & MOBILE ----
     if (btnToggleSidebar) {
         btnToggleSidebar.addEventListener('click', () => {
             sidebar.classList.toggle('collapsed');
@@ -352,7 +352,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
 
-    // ---------- FIREBASE ----------
+    // ---- FIREBASE ----
     const FIREBASE_BASE = 'https://dashfulll-2321b-default-rtdb.firebaseio.com';
 
     async function carregarDadosDoBack() {
@@ -390,7 +390,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     setInterval(carregarDadosSilent, 4000); // Checa o firebase a cada 4 segundos
 
-    // ---------- GRAVAÇÃO / AÇÕES GLOBAIS ----------
+    // ---- GRAVAÇÃO / AÇÕES GLOBAIS ----
     window.acionarBotao = async function(idEnvio, novoStatus, extra = {}) {
         const url = `${FIREBASE_BASE}/historico_envios/${idEnvio}.json`;
         const agora = new Date();
@@ -485,7 +485,7 @@ document.addEventListener('DOMContentLoaded', () => {
         await carregarDadosDoBack();
     };
 
-    // ---------- Atualizar equipe (versão robusta) ----------
+    // ---- Atualizar equipe (versão robusta) ----
     window.atualizarEquipe = async function(idEnvioRaw) {
       try {
         const idEnvio = String(idEnvioRaw || '').replace(/[<> ]/g,'').trim();
@@ -509,9 +509,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // Helper para localizar elementos de estimativa (exato ou parcial)
         const findEstimElements = () => {
           const estimEl = document.getElementById(`estimativa-${idEnvio}`) || document.querySelector(`[id*="estimativa-${idEnvio}"], [id$="${idEnvio}"]`) || null;
-          const minutosEl = document.getElementById(`estimativa-minutos-${idEnvio}`) || document.querySelector(`[id*="estimativa-minutos-${idEnvio}"], [id$="estimativa-minutos-${idEnvio}"]`) || null;
-          const horasEl = document.getElementById(`estimativa-horas-${idEnvio}`) || document.querySelector(`[id*="estimativa-horas-${idEnvio}"], [id$="estimativa-horas-${idEnvio}"]`) || null;
-          const opsSpan = document.getElementById(`estimativa-ops-${idEnvio}`) || document.querySelector(`[id*="estimativa-ops-${idEnvio}"], [id$="estimativa-ops-${idEnvio}"]`) || null;
+          const minutosEl = document.getElementById(`estimativa-minutos-${idEnvio}`) || document.querySelector(`[id*="estimativa-minutos-${idEnvio}"], [id$="${idEnvio}"]`) || null;
+          const horasEl = document.getElementById(`estimativa-horas-${idEnvio}`) || document.querySelector(`[id*="estimativa-horas-${idEnvio}"], [id$="${idEnvio}"]`) || null;
+          const opsSpan = document.getElementById(`estimativa-ops-${idEnvio}`) || document.querySelector(`[id*="estimativa-ops-${idEnvio}"], [id$="${idEnvio}"]`) || null;
           return { estimEl, minutosEl, horasEl, opsSpan, inputEl: el };
         };
 
@@ -528,43 +528,30 @@ document.addEventListener('DOMContentLoaded', () => {
           }
 
           const restante = Math.max(0, total - (progresso || 0));
-
-          // total minutos para concluir tudo (total trabalho)
           const minutosTotais = Math.ceil(restante * (typeof MINUTOS_POR_PECA !== 'undefined' ? MINUTOS_POR_PECA : 3));
+          const horasEstimadas = (minutosTotais / 60 / (valor || 1));
+          const tempoFormatadoLocal = (typeof formatarTempoEstimado === 'function') ? formatarTempoEstimado(minutosTotais) : `${minutosTotais} min`;
 
-          // minutos por pessoa (distribuído entre 'valor' operadores)
-          const minutosPorPessoa = Math.max(0, Math.ceil(minutosTotais / (valor || 1)));
-
-          // horas estimadas por pessoa (decimal)
-          const horasEstimadasPorPessoa = (minutosPorPessoa / 60);
-
-          // formata para exibição legível por pessoa
-          const tempoFormatadoPorPessoa = (typeof formatarTempoEstimado === 'function') ? formatarTempoEstimado(minutosPorPessoa) : `${minutosPorPessoa} min`;
-
-          // atualizar small (inline) mostrando tempo POR PESSOA seguido de " / X Ops"
           if (estimEl) {
             estimEl.setAttribute('data-restante', restante);
             estimEl.setAttribute('data-progresso', progresso);
-            estimEl.innerText = `Feitas: ${progresso} — Faltam: ${restante} • ⏳ Est: ${tempoFormatadoPorPessoa} / ${valor} Ops`;
+            estimEl.innerText = `Feitas: ${progresso} — Faltam: ${restante} • ⏳ Est: ${tempoFormatadoLocal} / ${valor} Ops`;
             console.log('[atualizarEquipe] updated estimativa-inline:', estimEl.innerText);
           }
-
-          // atualizar blocos grandes: minutos e horas mostram POR PESSOA (para corresponder à string acima)
           if (minutosEl) {
-            minutosEl.innerText = `${minutosPorPessoa} min`;
-            minutosEl.setAttribute('data-total', minutosTotais); // guarda total se necessário
-            console.log('[atualizarEquipe] updated minutosEl (por pessoa):', minutosEl.innerText);
+            minutosEl.innerText = `${minutosTotais} min`;
+            console.log('[atualizarEquipe] updated minutosEl:', minutosEl.innerText);
           }
           if (horasEl) {
-            horasEl.innerText = `${horasEstimadasPorPessoa.toFixed(1)} h`;
-            console.log('[atualizarEquipe] updated horasEl (por pessoa):', horasEl.innerText);
+            horasEl.innerText = `${horasEstimadas.toFixed(1)} h`;
+            console.log('[atualizarEquipe] updated horasEl:', horasEl.innerText);
           }
           if (opsSpan) {
             opsSpan.innerText = `${valor}`;
             console.log('[atualizarEquipe] updated opsSpan:', opsSpan.innerText);
           }
 
-          return { estimElExists: !!estimEl, minutosElExists: !!minutosEl, horasElExists: !!horasEl, opsSpanExists: !!opsSpan };
+          return { estimElExists: !!estimEl, minutosElExists: !!minutosEl, horasElExists: !!horasEl };
         };
 
         // tenta aplicar de imediato
@@ -590,7 +577,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     };
 
-    // ---------- ADIÇÃO / PENDÊNCIAS / PROGRESSO ----------
+    // ---- ADIÇÃO / PENDÊNCIAS / PROGRESSO ----
     window.adicionarProgresso = async function(idEnvio, produto, quantidade) {
         produto = String(produto || '').trim();
         quantidade = Number(quantidade) || 0;
@@ -634,7 +621,37 @@ document.addEventListener('DOMContentLoaded', () => {
         await fetch(url, { method: 'DELETE' });
         await carregarDadosDoBack();
     };
-
+// Voltar envio para "Pendente" (remover marcação de início)
+window.reverterParaPendente = async function(idEnvio) {
+  if (!confirm('Deseja realmente voltar este envio para Pendente? Isso removerá o registro de início.')) return;
+  try {
+    const agora = new Date();
+    const dataAtual = agora.toLocaleDateString('pt-BR');
+    const horaAtual = agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    const operador = operadorAtivo || 'Operador';
+    const url = `${FIREBASE_BASE}/historico_envios/${idEnvio}.json`;
+    const payload = {
+      meu_status: 'Pendente',
+      inicio_data: null,
+      inicio_hora: null,
+      inicio_operador: null,
+      inicio_registro: null,
+      ultima_atualizacao_data: dataAtual,
+      ultima_atualizacao_hora: horaAtual,
+      operador: operador
+    };
+    await fetch(url, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    await carregarDadosDoBack();
+    alert('Envio retornado para Pendente.');
+  } catch (err) {
+    console.error('Erro ao reverter para Pendente', err);
+    alert('Erro ao reverter envio. Veja o console para detalhes.');
+  }
+};
     window.reverterParaPreparacao = async function(idEnvio) {
         if (!confirm('Confirmar reverter o envio para "Em Preparação"?')) return;
         const url = `${FIREBASE_BASE}/historico_envios/${idEnvio}.json`;
@@ -649,7 +666,7 @@ document.addEventListener('DOMContentLoaded', () => {
         await carregarDadosDoBack();
     };
 
-    // ---------- FILTROS E RENDER ----------
+    // ---- FILTROS E RENDER ----
     function atualizarPainelCompleto() {
         filtrarEProcessarDados();
 
@@ -752,7 +769,7 @@ document.addEventListener('DOMContentLoaded', () => {
         paginacaoBotoes.appendChild(btnAvancar);
     }
 
-    // ---------- RENDER DA TABELA GERAL (COM DETALHE) ----------
+    // ---- RENDER DA TABELA GERAL (COM DETALHE) ----
     function renderizarTabelaGeral(envios) {
         if (!tbodyGeral) return;
         tbodyGeral.innerHTML = '';
@@ -784,10 +801,10 @@ document.addEventListener('DOMContentLoaded', () => {
             Object.keys(pendenciasObj).forEach(k => { totalPendenciasCount++; });
 
             // Tempo estimado considera o restante (peças ainda faltantes)
-            const tempoEstimadoMinutosTotal = Math.ceil(restantePecas * MINUTOS_POR_PECA); // total trabalho
+            const tempoEstimadoMinutos = Math.ceil(restantePecas * MINUTOS_POR_PECA);
             const pessoasAlocadas = Number(item.pessoas_alocadas) || 1;
-            const tempoPorPessoaMin = Math.ceil(tempoEstimadoMinutosTotal / (pessoasAlocadas || 1));
-            const tempoFormatadoPorPessoa = formatarTempoEstimado(tempoPorPessoaMin);
+            const tempoPorPessoaMin = Math.ceil(tempoEstimadoMinutos / pessoasAlocadas);
+            const tempoFormatado = formatarTempoEstimado(tempoEstimadoMinutos);
 
             let statusLabel = 'Agendado';
             let statusClass = 'badge-azul';
@@ -812,6 +829,13 @@ document.addEventListener('DOMContentLoaded', () => {
             if (statusLower === 'concluído' || statusLower === 'concluido') {
                 revertBtnHtml = `<button class="btn-action" style="padding:6px 10px; background:#f3f4f6; border:1px solid #e5e7eb;" onclick="event.stopPropagation(); window.reverterParaPreparacao('${item.id_envio}')">Reverter</button>`;
             }
+
+            // Novo: botão para Voltar p/ Pendente quando estiver Em Preparação
+            let voltarParaPendenteBtnHtml = '';
+            if (statusLower.includes('prepar')) {
+              voltarParaPendenteBtnHtml = `<button class="btn-action btn-voltar-pendente" style="padding:6px 10px; background:#f3f4f6; border:1px solid #e5e7eb;" onclick="event.stopPropagation(); window.reverterParaPendente('${item.id_envio}')">Voltar p/ Pendente</button>`;
+            }
+
             trPrincipal.innerHTML = `
                 <td>
                   <div class="label">Conta</div>
@@ -842,17 +866,27 @@ document.addEventListener('DOMContentLoaded', () => {
                   <div class="value">
                     <strong>${totalPecas}</strong> peças<br>
                     <small id="estimativa-${item.id_envio}" style="color:#6b7280;"
-                           data-total="${totalPecas}"
-                           data-progresso="${totalProgresso}"
-                           data-restante="${restantePecas}"
+                    data-total="${totalPecas}"
+                    data-progresso="${totalProgresso}"
+                    data-restante="${restantePecas}"
                     >
-                      Feitas: ${totalProgresso} — Faltam: ${restantePecas} • ⏳ Est: ${tempoFormatadoPorPessoa} / ${pessoasAlocadas} Ops
+                    Feitas: ${totalProgresso} — Faltam: ${restantePecas} • ⏳ Est: ${tempoFormatado} / ${pessoasAlocadas} Ops
                     </small>
                   </div>
                 </td>
                 <td>
                   <div class="label">Galpão</div>
-                  <div class="value"><span class="galpao-tag">${item.galpao || '—'}</span></div>
+                  <div class="value">
+                    <span class="galpao-tag">${item.galpao || '—'}</span>
+                    <div style="margin-top:6px;">
+                    <select id="input-dificuldade-${item.id_envio}" onchange="window.salvarDadosTransporte('${item.id_envio}')" style="font-size:11px; padding:4px; border:1px solid #cbd5e1; border-radius:4px; outline:none; width:100%;" onclick="event.stopPropagation()">
+                    <option value="">Dificuldade</option>
+                    <option value="Fácil" ${item.dificuldade === 'Fácil' ? 'selected' : ''}>Fácil</option>
+                    <option value="Médio" ${item.dificuldade === 'Médio' ? 'selected' : ''}>Médio</option>
+                    <option value="Difícil" ${item.dificuldade === 'Difícil' ? 'selected' : ''}>Difícil</option>
+                    </select>
+                    </div>
+                  </div>
                 </td>
                 <td>
                   <div class="label">Data / Prazo</div>
@@ -872,6 +906,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <button class="btn-action btn-preparar" style="padding:6px 10px;" onclick="event.stopPropagation(); window.acionarBotao('${item.id_envio}', 'Em Preparação')">Iniciar</button>
                     <button class="btn-action primary btn-concluir" style="padding:6px 10px;" onclick="event.stopPropagation(); window.acionarBotao('${item.id_envio}', 'Concluído')">Concluir</button>
                     ${revertBtnHtml}
+                    ${voltarParaPendenteBtnHtml}
                     </div>
                   </div>
                 </td>
@@ -982,32 +1017,26 @@ document.addEventListener('DOMContentLoaded', () => {
             const transporteHtml = `
                 <div style="padding:12px; display:flex; flex-direction:column; gap:8px;">
                     <div style="font-weight:700; color:#2d3748; display:flex; justify-content:space-between; align-items:center;">
-                        <span>🚚 Dados de Transporte & Meta</span>
-                        <div style="display:flex; gap:8px; align-items:center;">
-                            <button class="btn-action" style="padding:6px 8px; font-size:12px;" onclick="window.registrarTempoPreparacao('${item.id_envio}', 'inicio')">Registrar Início</button>
-                            <button class="btn-action" style="padding:6px 8px; font-size:12px;" onclick="window.registrarTempoPreparacao('${item.id_envio}', 'fim')">Registrar Fim</button>
-                            <button class="btn-action" style="padding:6px 8px; font-size:12px;" onclick="window.salvarDadosTransporte('${item.id_envio}')">Salvar</button>
-                        </div>
+                    <span>🚚 Dados de Transporte & Meta</span>
+                    <div style="display:flex; gap:8px; align-items:center;">
+                    <button class="btn-action" style="padding:6px 8px; font-size:12px;" onclick="window.registrarTempoPreparacao('${item.id_envio}', 'inicio')">Registrar Início</button>
+                    <button class="btn-action" style="padding:6px 8px; font-size:12px;" onclick="window.registrarTempoPreparacao('${item.id_envio}', 'fim')">Registrar Fim</button>
+                    <button class="btn-action" style="padding:6px 8px; font-size:12px;" onclick="window.salvarDadosTransporte('${item.id_envio}')">Salvar</button>
+                    </div>
                     </div>
                     <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                        <input id="input-motorista-${item.id_envio}" type="text" placeholder="Motorista" value="${(valorMotorista+'').replace(/"/g,'&quot;')}" style="flex:1; min-width:150px; padding:8px; border-radius:6px; border:1px solid #e2e8f0;">
-                        <input id="input-caminhao-${item.id_envio}" type="text" placeholder="Caminhão / Placa" value="${(valorCaminhao+'').replace(/"/g,'&quot;')}" style="width:170px; padding:8px; border-radius:6px; border:1px solid #e2e8f0;">
-                        <select id="input-dificuldade-${item.id_envio}" style="width:130px; padding:8px; border-radius:6px; border:1px solid #e2e8f0;">
-                            <option value="">Dificuldade</option>
-                            <option value="Fácil" ${valorDificuldade === 'Fácil' ? 'selected' : ''}>Fácil</option>
-                            <option value="Médio" ${valorDificuldade === 'Médio' ? 'selected' : ''}>Médio</option>
-                            <option value="Difícil" ${valorDificuldade === 'Difícil' ? 'selected' : ''}>Difícil</option>
-                        </select>
+                    <input id="input-motorista-${item.id_envio}" type="text" placeholder="Motorista" value="${(valorMotorista+'').replace(/"/g,'&quot;')}" style="flex:1; min-width:150px; padding:8px; border-radius:6px; border:1px solid #e2e8f0;">
+                    <input id="input-caminhao-${item.id_envio}" type="text" placeholder="Caminhão / Placa" value="${(valorCaminhao+'').replace(/"/g,'&quot;')}" style="width:170px; padding:8px; border-radius:6px; border:1px solid #e2e8f0;">
                     </div>
                     <div>
-                        <textarea id="textarea-observacao-${item.id_envio}" placeholder="Observação / Parenteses livre" style="width:100%; margin-top:8px; min-height:60px; padding:8px; border-radius:6px; border:1px solid #e2e8f0;">${(valorObservacao||'')}</textarea>
+                    <textarea id="textarea-observacao-${item.id_envio}" placeholder="Observação / Parenteses livre" style="width:100%; margin-top:8px; min-height:60px; padding:8px; border-radius:6px; border:1px solid #e2e8f0;">${(valorObservacao||'')}</textarea>
                     </div>
 
                     <div style="display:flex; gap:12px; align-items:center; margin-top:6px; font-size:13px; color:#6b7280;">
-                        <div>Estimativa (3 min/peça/pessoa): <strong id="estimativa-minutos-${item.id_envio}" data-total-minutos="${tempoEstimadoMinutosTotal}">${tempoPorPessoaMin} min</strong></div>
-                        <div>Horas estimadas (por pessoa, <span id="estimativa-ops-${item.id_envio}">${pessoasAlocadas}</span> ops): <strong id="estimativa-horas-${item.id_envio}">${(tempoPorPessoaMin/60).toFixed(1)} h</strong></div>
-                        ${item.hora_inicio_preparacao ? `<div>Início: ${item.hora_inicio_preparacao}</div>` : ''}
-                        ${item.hora_fim_preparacao ? `<div>Fim: ${item.hora_fim_preparacao}</div>` : ''}
+                    <div>Estimativa (3 min/peça/pessoa): <strong id="estimativa-minutos-${item.id_envio}">${tempoEstimadoMinutos} min</strong></div>
+                    <div>Horas estimadas (com <span id="estimativa-ops-${item.id_envio}">${pessoasAlocadas}</span> ops): <strong id="estimativa-horas-${item.id_envio}">${(tempoEstimadoMinutos/60/pessoasAlocadas).toFixed(1)} h</strong></div>
+                    ${item.hora_inicio_preparacao ? `<div>Início: ${item.hora_inicio_preparacao}</div>` : ''}
+                    ${item.hora_fim_preparacao ? `<div>Fim: ${item.hora_fim_preparacao}</div>` : ''}
                     </div>
                 </div>
             `;
@@ -1019,9 +1048,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                     <div style="font-weight:700; color:#374151;">📦 COMPOSIÇÃO & CONTROLES</div>
                     <div style="font-size:12px; color:#6b7280; display:flex; gap:8px; align-items:center;">
-                        Equipe: 
-                        <input id="pessoas-input-${item.id_envio}" type="number" value="${pessoasAlocadas}" min="1" style="width:60px; padding:4px; border:1px solid #cbd5e1; border-radius:4px;" onclick="event.stopPropagation()">
-                        <button class="btn-action" style="padding:6px 8px;" onclick="event.stopPropagation(); window.atualizarEquipe('${item.id_envio}')">Atualizar</button>
+                    Equipe:
+                    <input id="pessoas-input-${item.id_envio}" type="number" value="${pessoasAlocadas}" min="1" style="width:60px; padding:4px; border:1px solid #cbd5e1; border-radius:4px;" onclick="event.stopPropagation()">
+                    <button class="btn-action" style="padding:6px 8px;" onclick="event.stopPropagation(); window.atualizarEquipe('${item.id_envio}')">Atualizar</button>
                     </div>
                     </div>
                     ${itensHtml ? `<div style="margin-bottom:8px;">${itensHtml}</div>` : `<div style="font-size:12px; color:#9aa4b2; margin-bottom:8px;">Nenhuma composição de itens registrada.</div>`}
@@ -1054,7 +1083,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // ---------- TABELA DE PENDÊNCIAS, GRÁFICOS E KPIs (mantidos) ----------
+    // ---- TABELA DE PENDÊNCIAS, GRÁFICOS E KPIs (mantidos) ----
     function renderizarTabelaPendencias(envios) {
         if (!tbodyPendencias) return;
         tbodyPendencias.innerHTML = '';
@@ -1118,7 +1147,7 @@ document.addEventListener('DOMContentLoaded', () => {
         cardDiscrepancia.innerText = dec > 0 ? `${((dec - rec) / dec * 100).toFixed(1)}%` : '0%';
     }
 
-    // ---------- EVENTOS ----------
+    // ---- EVENTOS ----
     if (filtroConta) filtroConta.addEventListener('change', filtrarEProcessarDados);
     if (filtroGalpao) filtroGalpao.addEventListener('change', filtrarEProcessarDados);
     if (ordenarData) ordenarData.addEventListener('change', filtrarEProcessarDados);
@@ -1138,7 +1167,7 @@ document.addEventListener('DOMContentLoaded', () => {
     verificarOperador();
     carregarDadosDoBack();
 
-    // ---------- Helpers para attach de listeners nos inputs de pessoas ----------
+    // ---- Helpers para attach de listeners nos inputs de pessoas ----
     window.__attachPessoasListeners = function() {
       try {
         document.querySelectorAll('[id^="pessoas-input-"]').forEach(inp => {
