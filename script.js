@@ -686,7 +686,8 @@ window.reverterParaPendente = async function(idEnvio) {
         if (countFinalizados) countFinalizados.innerText = `(${dadosLocais.filter(i => i.status === 'closed_ok').length})`;
         if (countConcluidos) countConcluidos.innerText = `(${dadosLocais.filter(i => i.meu_status === 'Concluído').length})`;
         if (countDivergencias) countDivergencias.innerText = `(${dadosLocais.filter(i => i.status === 'closed_with_changes').length})`;
-        if (countAgendados) countAgendados.innerText = `(${dadosLocais.filter(i => i.meu_status !== 'Concluído' && i.status !== 'closed_ok' && i.status !== 'closed_with_changes' && i.status !== 'cancelled').length})`;
+        // <-- ALTERAÇÃO: exclui envios com "Em Preparação" do contador de Agendados
+        if (countAgendados) countAgendados.innerText = `(${dadosLocais.filter(i => i.meu_status !== 'Concluído' && i.status !== 'closed_ok' && i.status !== 'closed_with_changes' && i.status !== 'cancelled' && !String(i.meu_status || '').toLowerCase().includes('prepar')).length})`;
         if (countPreparacao) countPreparacao.innerText = `(${dadosLocais.filter(i => String(i.meu_status || '').toLowerCase() === 'em preparação'.toLowerCase()).length})`;
         if (countPendenciasReport) countPendenciasReport.innerText = `(${dadosLocais.filter(i => i.pendencias && Object.keys(i.pendencias).length > 0).length})`;
 
@@ -710,7 +711,8 @@ window.reverterParaPendente = async function(idEnvio) {
             let batePill = true;
             if (statusPillAtivo === 'closed_ok') batePill = (item.status === 'closed_ok');
             else if (statusPillAtivo === 'concluidos') batePill = (item.meu_status === 'Concluído');
-            else if (statusPillAtivo === 'pending') batePill = (item.meu_status !== 'Concluído' && item.status !== 'closed_ok' && item.status !== 'closed_with_changes' && item.status !== 'cancelled');
+            // <-- ALTERAÇÃO: no caso 'pending' (Agendados), exclui itens que estejam em "Em Preparação"
+            else if (statusPillAtivo === 'pending') batePill = (item.meu_status !== 'Concluído' && item.status !== 'closed_ok' && item.status !== 'closed_with_changes' && item.status !== 'cancelled' && !String(item.meu_status || '').toLowerCase().includes('prepar'));
             else if (statusPillAtivo === 'closed_with_changes') batePill = (item.status === 'closed_with_changes');
             else if (statusPillAtivo === 'in_preparacao') batePill = (String(item.meu_status || '').toLowerCase() === 'em preparação'.toLowerCase());
             else if (statusPillAtivo === 'pendencia') batePill = (item.pendencias && Object.keys(item.pendencias).length > 0);
