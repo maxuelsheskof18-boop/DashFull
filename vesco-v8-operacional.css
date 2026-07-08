@@ -2700,3 +2700,34 @@ body:not(.v8-sidebar-collapsed) .v8-menu button .v110-menu-ping{
 @media(max-width:760px){
   .v112-driver-map{height:430px}
 }
+
+
+/* ============================================================================
+   VESCO V10.14 — Linha ao vivo multipontos
+   ============================================================================ */
+.v114-origin-marker{
+  width:34px;
+  height:34px;
+  border-radius:999px;
+  display:grid;
+  place-items:center;
+  background:#0f172a;
+  color:#fff;
+  border:3px solid #fff;
+  box-shadow:0 10px 22px rgba(15,23,42,.28);
+}
+.v114-origin-marker i{
+  font-size:14px;
+}
+.v114-remaining-line{
+  stroke:#f59e0b !important;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+  filter:drop-shadow(0 0 4px rgba(245,158,11,.35));
+}
+.v112-stop-marker{
+  background:#ef4444;
+}
+.v112-stop-marker:has(+ *){
+  background:#ef4444;
+}

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <title>Vesco Motorista V10.13</title>
+  <title>Vesco Motorista V10.14</title>
   <link rel="preconnect" href="https://cdnjs.cloudflare.com">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <style>
@@ -439,7 +439,7 @@ function iniciarLocalizacao(){
       await saveLocationFirebase(payload);
       geoTracking=true;
       updateTrackingUi();
-      toast('Posição enviada ao vivo.',1400);
+      toast('Posição enviada ao vivo no percurso.',1400);
     }catch(e){
       console.warn('Falha ao salvar localização Firebase', e);
       toast('Falha ao enviar localização: '+(e.message||e),4000);
