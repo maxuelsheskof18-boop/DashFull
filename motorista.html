@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <title>Vesco Motorista V10.12</title>
+  <title>Vesco Motorista V10.13</title>
   <link rel="preconnect" href="https://cdnjs.cloudflare.com">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <style>
@@ -316,7 +316,7 @@ function getCurrentPositionPromise(){
     navigator.geolocation.getCurrentPosition(resolve, reject, {
       enableHighAccuracy:true,
       maximumAge:0,
-      timeout:18000
+      timeout:14000
     });
   });
 }
@@ -340,6 +340,8 @@ async function pedirLocalizacaoObrigatoria(motivo='confirmar a entrega'){
     await saveLocationFirebase(payload);
     lastLocation=payload;
     geoPermissionBlocked=false;
+    geoTracking=true;
+    iniciarEnvioPeriodicoLocalizacao();
     updateTrackingUi();
     return payload;
   }catch(e){
@@ -358,7 +360,7 @@ async function pedirLocalizacaoAoAbrir(){
   geoPromptedOnOpen=true;
   try{
     await pedirLocalizacaoObrigatoria('usar a rota');
-    toast('Localização autorizada. Você já pode entregar.', 2600);
+    toast('Localização autorizada. Acompanhamento ao vivo iniciado.', 2600);
   }catch(e){
     toast(e.message || e, 5200);
   }
@@ -386,7 +388,7 @@ async function enviarLocalizacaoAtual(silent=true){
 }
 function iniciarEnvioPeriodicoLocalizacao(){
   if(geoSendTimer) clearInterval(geoSendTimer);
-  geoSendTimer=setInterval(()=>enviarLocalizacaoAtual(true),8000);
+  geoSendTimer=setInterval(()=>enviarLocalizacaoAtual(true),4000);
 }
 function pararEnvioPeriodicoLocalizacao(){
   if(geoSendTimer){
@@ -437,7 +439,7 @@ function iniciarLocalizacao(){
       await saveLocationFirebase(payload);
       geoTracking=true;
       updateTrackingUi();
-      toast('Localização enviada.',1400);
+      toast('Posição enviada ao vivo.',1400);
     }catch(e){
       console.warn('Falha ao salvar localização Firebase', e);
       toast('Falha ao enviar localização: '+(e.message||e),4000);
