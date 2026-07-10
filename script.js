@@ -747,6 +747,76 @@ window.reverterParaPendente = async function(idEnvio) {
             .trim();
     }
 
+
+    function resumoStatusItens(item) {
+        const itens = item.itens || {};
+        const totalItens = Object.keys(itens).length;
+        const flagAtualizar = item.itens_precisa_atualizar === true;
+        const erro = item.itens_ultimo_erro && item.itens_ultimo_erro.mensagem ? item.itens_ultimo_erro.mensagem : '';
+        const atualizadoEm = item.itens_atualizados_em || '';
+
+        if (totalItens > 0 && flagAtualizar) {
+            return {
+                classe: 'sync-warning',
+                titulo: 'Itens carregados, atualização pendente',
+                texto: `${totalItens} itens • aguardando revisão`,
+                detalhe: item.motivo_atualizacao_itens || 'Envio alterado'
+            };
+        }
+
+        if (totalItens > 0) {
+            return {
+                classe: 'sync-ok',
+                titulo: 'Itens processados',
+                texto: `${totalItens} itens carregados`,
+                detalhe: atualizadoEm ? `Atualizado: ${new Date(atualizadoEm).toLocaleString('pt-BR')}` : 'Gravado no Firebase'
+            };
+        }
+
+        if (flagAtualizar) {
+            return {
+                classe: 'sync-running',
+                titulo: 'Na fila de processamento',
+                texto: 'Aguardando worker',
+                detalhe: item.motivo_atualizacao_itens || 'Será processado automaticamente'
+            };
+        }
+
+        if (erro) {
+            return {
+                classe: 'sync-error',
+                titulo: 'Erro ao buscar itens',
+                texto: 'Tentará novamente',
+                detalhe: erro
+            };
+        }
+
+        return {
+            classe: 'sync-pending',
+            titulo: 'Itens ainda não carregados',
+            texto: 'Em processo',
+            detalhe: 'Worker Easypanel ainda vai buscar'
+        };
+    }
+
+    function filtroBaseSemPill(item, query, contaSelecionada, galpaoSelecionado) {
+        const bateConta = (contaSelecionada === 'Todas' || item.conta === contaSelecionada);
+        const bateGalpao = (galpaoSelecionado === 'Todos' || item.galpao === galpaoSelecionado);
+        const bateBusca = itemBateBusca(item, query);
+        return bateConta && bateGalpao && bateBusca;
+    }
+
+    function itemBatePill(item) {
+        if (statusPillAtivo === 'closed_ok') return (item.status === 'closed_ok');
+        if (statusPillAtivo === 'concluidos') return (item.meu_status === 'Concluído');
+        if (statusPillAtivo === 'pending') return (item.meu_status !== 'Concluído' && item.status !== 'closed_ok' && item.status !== 'closed_with_changes' && item.status !== 'cancelled' && !String(item.meu_status || '').toLowerCase().includes('prepar'));
+        if (statusPillAtivo === 'closed_with_changes') return (item.status === 'closed_with_changes');
+        if (statusPillAtivo === 'in_preparacao') return (String(item.meu_status || '').toLowerCase() === 'em preparação'.toLowerCase());
+        if (statusPillAtivo === 'pendencia') return (item.pendencias && Object.keys(item.pendencias).length > 0);
+        return true;
+    }
+
+
     function itemBateBusca(item, query) {
         if (!query) return true;
 
@@ -785,21 +855,14 @@ window.reverterParaPendente = async function(idEnvio) {
         const galpaoSelecionado = filtroGalpao ? filtroGalpao.value : 'Todos';
         const ordemSelecionada = ordenarData ? ordenarData.value : 'recente';
 
-        dadosFiltradosAtuais = dadosLocais.filter(item => {
-            const bateConta = (contaSelecionada === 'Todas' || item.conta === contaSelecionada);
-            const bateGalpao = (galpaoSelecionado === 'Todos' || item.galpao === galpaoSelecionado);
-            const bateBusca = itemBateBusca(item, query);
+        // Primeiro aplica loja/galpão/busca.
+        // Os números das pills precisam respeitar estes filtros, senão aparece "tem 19"
+        // mas a tabela fica vazia quando a loja selecionada não possui aqueles envios.
+        const baseFiltrada = dadosLocais.filter(item => filtroBaseSemPill(item, query, contaSelecionada, galpaoSelecionado));
 
-            let batePill = true;
-            if (statusPillAtivo === 'closed_ok') batePill = (item.status === 'closed_ok');
-            else if (statusPillAtivo === 'concluidos') batePill = (item.meu_status === 'Concluído');
-            else if (statusPillAtivo === 'pending') batePill = (item.meu_status !== 'Concluído' && item.status !== 'closed_ok' && item.status !== 'closed_with_changes' && item.status !== 'cancelled' && !String(item.meu_status || '').toLowerCase().includes('prepar'));
-            else if (statusPillAtivo === 'closed_with_changes') batePill = (item.status === 'closed_with_changes');
-            else if (statusPillAtivo === 'in_preparacao') batePill = (String(item.meu_status || '').toLowerCase() === 'em preparação'.toLowerCase());
-            else if (statusPillAtivo === 'pendencia') batePill = (item.pendencias && Object.keys(item.pendencias).length > 0);
+        atualizarContadoresPills(baseFiltrada);
 
-            return bateConta && bateGalpao && bateBusca && batePill;
-        });
+        dadosFiltradosAtuais = baseFiltrada.filter(item => itemBatePill(item));
 
         dadosFiltradosAtuais.sort((a, b) => {
             return ordemSelecionada === 'recente' ? new Date(b.data) - new Date(a.data) : new Date(a.data) - new Date(b.data);
@@ -808,6 +871,31 @@ window.reverterParaPendente = async function(idEnvio) {
         paginaAtual = 1;
         recalcularEExibirPagina();
     }
+
+
+    function setTextoSeguro(id, texto) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = texto;
+    }
+
+    function atualizarContadoresPills(base) {
+        const total = base.length;
+        const finalizados = base.filter(i => i.status === 'closed_ok').length;
+        const concluidos = base.filter(i => i.meu_status === 'Concluído').length;
+        const divergencias = base.filter(i => i.status === 'closed_with_changes').length;
+        const agendados = base.filter(i => i.meu_status !== 'Concluído' && i.status !== 'closed_ok' && i.status !== 'closed_with_changes' && i.status !== 'cancelled' && !String(i.meu_status || '').toLowerCase().includes('prepar')).length;
+        const pendencias = base.filter(i => i.pendencias && Object.keys(i.pendencias).length > 0).length;
+        const emPreparacao = base.filter(i => String(i.meu_status || '').toLowerCase() === 'em preparação'.toLowerCase()).length;
+
+        setTextoSeguro('count-todos', `(${total})`);
+        setTextoSeguro('count-finalizados', `(${finalizados})`);
+        setTextoSeguro('count-concluidos', `(${concluidos})`);
+        setTextoSeguro('count-divergencias', `(${divergencias})`);
+        setTextoSeguro('count-agendados', `(${agendados})`);
+        setTextoSeguro('count-pendencias', `(${pendencias})`);
+        setTextoSeguro('count-em-preparacao', `(${emPreparacao})`);
+    }
+
 
     function recalcularEExibirPagina() {
         const totalItens = dadosFiltradosAtuais.length;
@@ -858,7 +946,7 @@ window.reverterParaPendente = async function(idEnvio) {
         tbodyGeral.innerHTML = '';
 
         if (envios.length === 0) {
-            tbodyGeral.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:20px; color:#6b7280;">Nenhum envio localizado.</td></tr>';
+            tbodyGeral.innerHTML = '<tr><td colspan="8" class="empty-state-row"><div class="empty-state-card"><strong>Nenhum envio localizado com estes filtros.</strong><span>Troque a loja, status ou limpe a busca. Os números das abas agora consideram o filtro atual.</span></div></td></tr>';
             return;
         }
 
@@ -900,6 +988,8 @@ window.reverterParaPendente = async function(idEnvio) {
             const horaFormatada = isNaN(dataObjeto.getTime()) ? '' : dataObjeto.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
             const pendBadgeHtml = totalPendenciasCount > 0 ? `<div style="background:#ef4444; color:white; padding:2px 6px; border-radius:4px; font-size:10px; display:inline-block; margin-top:6px;">🚨 PENDÊNCIA (${totalPendenciasCount})</div>` : '';
+
+            const itemSync = resumoStatusItens(item);
 
             const inicioInfo = item.inicio_registro ? `<div style="font-size:11px; color:#6b7280;">Início: ${item.inicio_registro} • ${item.inicio_operador || ''}</div>` : '';
             const conclusaoInfo = item.conclusao_registro ? `<div style="font-size:11px; color:#6b7280;">Conclusão: ${item.conclusao_registro} • ${item.conclusao_operador || ''}${item.motorista ? ' • Motorista: ' + item.motorista : ''}${item.caminhao_placa ? ' • Caminhão: ' + item.caminhao_placa : ''}</div>` : (item.motorista || item.caminhao_placa ? `<div style="font-size:11px; color:#6b7280;">${item.motorista ? 'Motorista: ' + item.motorista : ''} ${item.caminhao_placa ? '• Caminhão: ' + item.caminhao_placa : ''}</div>` : '');
@@ -955,6 +1045,11 @@ window.reverterParaPendente = async function(idEnvio) {
                     >
                     Feitas: ${totalProgresso} — Faltam: ${restantePecas} • ⏳ Est: ${tempoFormatado} / ${pessoasAlocadas} Ops
                     </small>
+                    <div class="item-sync-pill ${itemSync.classe}" title="${itemSync.detalhe || ''}">
+                      <span class="sync-dot-mini"></span>
+                      <strong>${itemSync.titulo}</strong>
+                      <small>${itemSync.texto}</small>
+                    </div>
                   </div>
                 </td>
                 <td>

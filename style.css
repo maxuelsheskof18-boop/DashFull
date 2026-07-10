@@ -605,3 +605,96 @@ body { background: linear-gradient(180deg, #f4f7fb 0%, #eef3f9 100%); }
     font-size: 14px !important;
   }
 }
+
+
+/* ===== V4 - Filtros coerentes + status de itens ===== */
+.item-sync-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 6px 9px;
+  border-radius: 999px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 11px;
+  line-height: 1;
+  max-width: 100%;
+  white-space: normal;
+}
+.item-sync-pill strong {
+  font-size: 11px;
+  font-weight: 800;
+}
+.item-sync-pill small {
+  font-size: 10px;
+  color: inherit;
+  opacity: .86;
+}
+.sync-dot-mini {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: currentColor;
+  flex: 0 0 auto;
+}
+.item-sync-pill.sync-ok {
+  background: #ecfdf3;
+  color: #15803d;
+  border-color: #bbf7d0;
+}
+.item-sync-pill.sync-running {
+  background: #eff6ff;
+  color: #2563eb;
+  border-color: #bfdbfe;
+}
+.item-sync-pill.sync-warning {
+  background: #fff7ed;
+  color: #d97706;
+  border-color: #fed7aa;
+}
+.item-sync-pill.sync-error {
+  background: #fef2f2;
+  color: #dc2626;
+  border-color: #fecaca;
+}
+.item-sync-pill.sync-pending {
+  background: #f8fafc;
+  color: #64748b;
+  border-color: #e2e8f0;
+}
+
+.empty-state-row {
+  padding: 26px !important;
+  background: #f8fafc !important;
+}
+.empty-state-card {
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 22px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 16px;
+  background: #ffffff;
+  text-align: center;
+  color: #475569;
+}
+.empty-state-card strong {
+  display: block;
+  color: #0f172a;
+  font-size: 15px;
+  margin-bottom: 6px;
+}
+.empty-state-card span {
+  display: block;
+  font-size: 13px;
+}
+
+@media (max-width: 768px) {
+  .item-sync-pill {
+    display: flex;
+    width: fit-content;
+    max-width: 100%;
+    line-height: 1.2;
+  }
+}
