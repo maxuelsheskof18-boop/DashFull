@@ -758,8 +758,8 @@ window.reverterParaPendente = async function(idEnvio) {
         if (totalItens > 0 && flagAtualizar) {
             return {
                 classe: 'sync-warning',
-                titulo: 'Itens carregados, atualização pendente',
-                texto: `${totalItens} itens • aguardando revisão`,
+                titulo: 'Revisar itens',
+                texto: `${totalItens} carregados`,
                 detalhe: item.motivo_atualizacao_itens || 'Envio alterado'
             };
         }
@@ -768,7 +768,7 @@ window.reverterParaPendente = async function(idEnvio) {
             return {
                 classe: 'sync-ok',
                 titulo: 'Itens processados',
-                texto: `${totalItens} itens carregados`,
+                texto: `${totalItens} carregados`,
                 detalhe: atualizadoEm ? `Atualizado: ${new Date(atualizadoEm).toLocaleString('pt-BR')}` : 'Gravado no Firebase'
             };
         }
@@ -776,8 +776,8 @@ window.reverterParaPendente = async function(idEnvio) {
         if (flagAtualizar) {
             return {
                 classe: 'sync-running',
-                titulo: 'Na fila de processamento',
-                texto: 'Aguardando worker',
+                titulo: 'Em processo',
+                texto: 'aguardando worker',
                 detalhe: item.motivo_atualizacao_itens || 'Será processado automaticamente'
             };
         }
@@ -785,16 +785,16 @@ window.reverterParaPendente = async function(idEnvio) {
         if (erro) {
             return {
                 classe: 'sync-error',
-                titulo: 'Erro ao buscar itens',
-                texto: 'Tentará novamente',
+                titulo: 'Erro nos itens',
+                texto: 'tentará novamente',
                 detalhe: erro
             };
         }
 
         return {
             classe: 'sync-pending',
-            titulo: 'Itens ainda não carregados',
-            texto: 'Em processo',
+            titulo: 'Sem itens',
+            texto: 'na fila',
             detalhe: 'Worker Easypanel ainda vai buscar'
         };
     }
