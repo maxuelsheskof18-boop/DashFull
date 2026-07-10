@@ -1,1 +1,1 @@
-Substitua os 3 arquivos do front-end: index.html, script.js e style.css.
+Versão v3: corrigida a sobreposição dos textos com layout em cards flexíveis para os itens, 100% responsivo.
