@@ -64,205 +64,6 @@ document.addEventListener('DOMContentLoaded', () => {
         return partes.join(' ');
     }
 
-
-    // ---- SANITIZAÇÃO / VALIDAÇÃO DE DADOS DO MERCADO LIVRE ----
-    function escapeHTML(valor) {
-        return String(valor ?? '')
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#039;');
-    }
-
-    function normalizarTexto(valor) {
-        return String(valor || '')
-            .toLowerCase()
-            .normalize('NFD')
-            .replace(/[̀-ͯ]/g, '');
-    }
-
-    function numeroValido(valor) {
-        if (valor === null || valor === undefined || valor === '' || valor === '-') return null;
-        const n = Number(valor);
-        return Number.isFinite(n) ? n : null;
-    }
-
-    function statusMLNormalizado(item) {
-        return normalizarTexto(item?.status || item?.status_ml || item?.ml_status || '');
-    }
-
-    function isStatusVencidoOuCancelado(item) {
-        const status = statusMLNormalizado(item);
-        const motivo = normalizarTexto(item?.status_detail || item?.substatus || item?.situacao_ml || '');
-        return (
-            status.includes('expired') ||
-            status.includes('vencido') ||
-            status.includes('cancelled') ||
-            status.includes('canceled') ||
-            status.includes('cancelado') ||
-            motivo.includes('expired') ||
-            motivo.includes('vencido') ||
-            motivo.includes('cancel')
-        );
-    }
-
-    function dataValidaReservada(item) {
-        const data = item?.data || item?.data_reservada || item?.appointment_date;
-        if (!data) return false;
-        const d = new Date(data);
-        return !isNaN(d.getTime());
-    }
-
-    function envioValidoParaPainel(item) {
-        if (!item || typeof item !== 'object') return false;
-        if (item.ativo_operacao === false) return false;
-
-        // Vencidos/cancelados continuam fora do painel.
-        // Envios sem data reservada NÃO saem mais: vão para o filtro "Reservar Data".
-        if (isStatusVencidoOuCancelado(item)) return false;
-
-        const declaradas = numeroValido(item.unidades_declaradas);
-        if (declaradas === null || declaradas <= 0) return false;
-
-        return true;
-    }
-
-    function ehEnvioSemDataReservada(item) {
-        if (!envioValidoParaPainel(item)) return false;
-        return !dataValidaReservada(item);
-    }
-
-    function categoriaOperacional(item) {
-        if (ehEnvioSemDataReservada(item)) return 'reservar_data';
-        if (dataValidaReservada(item)) return 'agendado';
-        return item?.categoria_operacional || 'indefinido';
-    }
-
-    function compararDataPainel(a, b, ordemSelecionada) {
-        const da = dataValidaReservada(a) ? new Date(a.data || a.data_reservada || a.appointment_date).getTime() : null;
-        const db = dataValidaReservada(b) ? new Date(b.data || b.data_reservada || b.appointment_date).getTime() : null;
-
-        // Sem data fica no final quando estiver em Todos/Agendados.
-        if (da === null && db === null) {
-            return String(b.id_envio || '').localeCompare(String(a.id_envio || ''));
-        }
-        if (da === null) return 1;
-        if (db === null) return -1;
-
-        return ordemSelecionada === 'recente' ? db - da : da - db;
-    }
-
-    function possuiDivergenciaAutomatica(item) {
-        const status = statusMLNormalizado(item);
-        if (status.includes('closed_with_changes') || status.includes('diverg')) return true;
-
-        const declarado = numeroValido(item.unidades_declaradas);
-        const recebido = numeroValido(item.unidades_recebidas);
-        if (declarado === null || recebido === null) return false;
-
-        return recebido < declarado;
-    }
-
-    function ehAgendadoOperacional(item) {
-        if (isStatusVencidoOuCancelado(item)) return false;
-
-        // Agendado de verdade precisa ter Data Reservada real.
-        // Se não tiver data, vai para o filtro "Reservar Data".
-        if (!dataValidaReservada(item)) return false;
-
-        const statusLocal = normalizarTexto(item.meu_status || '');
-        const status = statusMLNormalizado(item);
-
-        if (statusLocal.includes('concluido') || statusLocal.includes('prepar')) return false;
-        if (status.includes('closed_ok') || status.includes('closed_with_changes')) return false;
-        if (status.includes('cancel')) return false;
-        return true;
-    }
-
-    function formatarNumeroOuTraco(valor) {
-        const n = numeroValido(valor);
-        return n === null ? '—' : n.toLocaleString('pt-BR');
-    }
-
-
-    // ---- CONTROLE DE ITENS DO FULL ----
-    function domKeyItem(idEnvio, sku) {
-        try {
-            return btoa(unescape(encodeURIComponent(String(idEnvio) + '|' + String(sku))))
-                .replace(/=/g, '')
-                .replace(/[^a-zA-Z0-9_-]/g, '');
-        } catch (e) {
-            return String(idEnvio + '_' + sku).replace(/[^a-zA-Z0-9_-]/g, '_');
-        }
-    }
-
-    function obterDeclaradoItem(prod) {
-        return numeroValido(prod?.declarado ?? prod?.quantity ?? prod?.quantidade ?? prod?.units) || 0;
-    }
-
-    function obterStatusControleItem(prod) {
-        const bruto = prod?.status_controle || prod?.controle_status || prod?.status_local || '';
-        if (bruto) return normalizarTexto(bruto).replace(/\s+/g, '_');
-        if (prod?.conferido) return 'feito';
-        const div = normalizarTexto(prod?.divergencia || '');
-        if (div.includes('nao tem') || div.includes('nao_tem')) return 'nao_tem';
-        if (div.includes('insuficiente')) return 'parcial';
-        if (div.includes('ok')) return 'feito';
-        return 'pendente';
-    }
-
-    function obterQtdFeitaItem(prod) {
-        const declarado = obterDeclaradoItem(prod);
-        const qtd = numeroValido(prod?.qtd_feita ?? prod?.quantidade_feita ?? prod?.feito ?? prod?.qtd_conferida);
-        if (qtd !== null) return Math.max(0, Math.min(qtd, declarado || qtd));
-        const status = obterStatusControleItem(prod);
-        if (status === 'feito' || prod?.conferido) return declarado;
-        return 0;
-    }
-
-    function itemFoiMarcado(prod) {
-        const status = obterStatusControleItem(prod);
-        return status !== 'pendente' || prod?.conferido || numeroValido(prod?.qtd_feita) !== null || numeroValido(prod?.quantidade_feita) !== null;
-    }
-
-    function calcularResumoItens(itensObj) {
-        const itens = itensObj && typeof itensObj === 'object' ? Object.keys(itensObj).map(sku => ({ sku, ...(itensObj[sku] || {}) })) : [];
-        const resumo = {
-            totalItens: itens.length,
-            itensFeitos: 0,
-            itensParciais: 0,
-            itensNaoFeitos: 0,
-            itensNaoMarcados: 0,
-            pecasDeclaradas: 0,
-            pecasFeitas: 0,
-            pecasFaltantes: 0
-        };
-
-        itens.forEach(prod => {
-            const declarado = obterDeclaradoItem(prod);
-            const feita = obterQtdFeitaItem(prod);
-            const status = obterStatusControleItem(prod);
-            const faltante = Math.max(0, declarado - feita);
-            resumo.pecasDeclaradas += declarado;
-            resumo.pecasFeitas += feita;
-            resumo.pecasFaltantes += faltante;
-
-            if (!itemFoiMarcado(prod)) resumo.itensNaoMarcados += 1;
-            else if (status === 'feito' || feita >= declarado) resumo.itensFeitos += 1;
-            else if (status === 'parcial' || (feita > 0 && feita < declarado)) resumo.itensParciais += 1;
-            else if (status === 'nao_tem' || status === 'nao_feito') resumo.itensNaoFeitos += 1;
-            else resumo.itensNaoMarcados += 1;
-        });
-        return resumo;
-    }
-
-    function badgeResumoItensHtml(resumo) {
-        if (!resumo || resumo.totalItens === 0) return '<span style="font-size:11px; color:#94a3b8;">Itens não carregados</span>';
-        const cor = resumo.itensNaoMarcados > 0 ? '#f59e0b' : (resumo.itensNaoFeitos > 0 || resumo.itensParciais > 0 ? '#ef4444' : '#10b981');
-        return `<span style="display:inline-block; margin-top:4px; padding:2px 6px; border-radius:999px; font-size:10px; font-weight:800; background:${cor}18; color:${cor}; border:1px solid ${cor}44;">Itens: ${resumo.itensFeitos}/${resumo.totalItens} feitos • ${resumo.itensNaoMarcados} sem marcar</span>`;
-    }
-
     // ---- RESUMO DE MOTORISTAS (com minimizar + seletor de mês) ----
     function garantirPillsExtras() {
         if (!document.querySelector('.pills-bar')) return;
@@ -280,7 +81,6 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         inserirDepois('closed_ok', 'concluidos', 'Concluídos', 'count-concluidos');
-        inserirDepois('pending', 'reservar_data', 'Reservar Data', 'count-reservar-data');
         inserirDepois('pending', 'in_preparacao', 'Em Preparação', 'count-preparacao');
         inserirDepois('pending', 'pendencia', 'Pendências', 'count-pendencias-report');
 
@@ -555,32 +355,18 @@ document.addEventListener('DOMContentLoaded', () => {
     // ---- FIREBASE ----
     const FIREBASE_BASE = 'https://dashfulll-2321b-default-rtdb.firebaseio.com';
 
-    // Quando abrir pelo Live Server (127.0.0.1:5500), o botão Atualizar itens precisa chamar o backend Node.
-    // Rode o backend com: npm install && npm start. Ele sobe em http://127.0.0.1:3000.
-    // Em produção, você pode salvar outra base no console do navegador:
-    // localStorage.setItem('dashfull_api_base_url', 'https://SEU-BACKEND.vercel.app')
-    const API_BASE_URL = (window.DASHFULL_API_BASE_URL || localStorage.getItem('dashfull_api_base_url') || 'http://127.0.0.1:3000').replace(/\/$/, '');
-
-    function normalizarListaFirebase(data) {
-        if (!data) return [];
-        return Object.keys(data)
-            .map(id => ({ ...(data[id] || {}), id_envio: (data[id] && data[id].id_envio) || id }))
-            .filter(envioValidoParaPainel)
-            .sort((a, b) => new Date(b.data) - new Date(a.data));
-    }
-
     async function carregarDadosDoBack() {
         try {
             const res = await fetch(`${FIREBASE_BASE}/historico_envios.json`);
             const data = await res.json();
-            dadosLocais = normalizarListaFirebase(data);
+            if (!data) { dadosLocais = []; atualizarPainelCompleto(); return; }
+
+            const listaFormatada = Object.keys(data).map(id => data[id]);
+            listaFormatada.sort((a, b) => new Date(b.data) - new Date(a.data));
+            dadosLocais = listaFormatada;
             atualizarPainelCompleto();
-            const syncStatus = document.getElementById('sync-status');
-            if (syncStatus) syncStatus.innerText = 'Online';
         } catch (err) {
             console.error("Erro ao conectar ao Firebase:", err);
-            const syncStatus = document.getElementById('sync-status');
-            if (syncStatus) syncStatus.innerText = 'Erro de conexão';
         }
     }
 
@@ -588,7 +374,10 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const res = await fetch(`${FIREBASE_BASE}/historico_envios.json`);
             const data = await res.json();
-            const listaFormatada = normalizarListaFirebase(data);
+            if (!data) return;
+
+            const listaFormatada = Object.keys(data).map(id => data[id]);
+            listaFormatada.sort((a, b) => new Date(b.data) - new Date(a.data));
 
             if (JSON.stringify(dadosLocais) !== JSON.stringify(listaFormatada)) {
                 dadosLocais = listaFormatada;
@@ -648,135 +437,58 @@ document.addEventListener('DOMContentLoaded', () => {
         await carregarDadosDoBack();
     };
 
-    window.salvarControleItem = async function(idEnvio, sku, keyDom) {
-        const statusEl = document.getElementById(`item-status-${keyDom}`);
-        const qtdEl = document.getElementById(`item-qtd-${keyDom}`);
-        const obsEl = document.getElementById(`item-obs-${keyDom}`);
-        const declarado = numeroValido(qtdEl?.dataset?.declarado) || 0;
-        let qtdFeita = numeroValido(qtdEl ? qtdEl.value : 0);
-        qtdFeita = qtdFeita === null ? 0 : Math.max(0, qtdFeita);
-        if (declarado > 0) qtdFeita = Math.min(qtdFeita, declarado);
-
-        const status = statusEl ? statusEl.value : 'pendente';
-        const divergenciaPorStatus = {
-            feito: 'OK',
-            parcial: 'Qtd Insuficiente',
-            nao_tem: 'Não Tem',
-            nao_feito: 'Não Feito',
-            pendente: ''
-        };
-        const conferido = status === 'feito' || (declarado > 0 && qtdFeita >= declarado);
-        const payload = {
-            status_controle: status,
-            qtd_feita: qtdFeita,
-            qtd_faltante: Math.max(0, declarado - qtdFeita),
-            conferido: conferido,
-            divergencia: divergenciaPorStatus[status] || '',
-            observacao_item: obsEl ? obsEl.value.trim() : '',
-            atualizado_por: operadorAtivo || 'Operador',
-            atualizado_em: new Date().toLocaleString('pt-BR')
-        };
-
-        const url = `${FIREBASE_BASE}/historico_envios/${idEnvio}/itens/${encodeURIComponent(sku)}.json`;
-        await fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-        await carregarDadosDoBack();
-    };
-
-    window.marcarItemRapido = async function(idEnvio, sku, keyDom, status) {
-        const statusEl = document.getElementById(`item-status-${keyDom}`);
-        const qtdEl = document.getElementById(`item-qtd-${keyDom}`);
-        const declarado = numeroValido(qtdEl?.dataset?.declarado) || 0;
-        if (statusEl) statusEl.value = status;
-        if (qtdEl) {
-            if (status === 'feito') qtdEl.value = declarado;
-            if (status === 'nao_tem' || status === 'nao_feito' || status === 'pendente') qtdEl.value = 0;
-        }
-        await window.salvarControleItem(idEnvio, sku, keyDom);
-    };
-
     window.marcarItemConferido = async function(idEnvio, sku, isChecked) {
-        const envio = dadosLocais.find(e => String(e.id_envio) === String(idEnvio)) || {};
-        const prod = envio.itens?.[sku] || {};
-        const declarado = obterDeclaradoItem(prod);
-        const payload = {
-            conferido: !!isChecked,
-            status_controle: isChecked ? 'feito' : 'pendente',
-            qtd_feita: isChecked ? declarado : 0,
-            qtd_faltante: isChecked ? 0 : declarado,
-            divergencia: isChecked ? 'OK' : '',
-            atualizado_por: operadorAtivo || 'Operador',
-            atualizado_em: new Date().toLocaleString('pt-BR')
-        };
-        const url = `${FIREBASE_BASE}/historico_envios/${idEnvio}/itens/${encodeURIComponent(sku)}.json`;
-        await fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        const url = `${FIREBASE_BASE}/historico_envios/${idEnvio}/itens/${sku}.json`;
+        await fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ conferido: isChecked }) });
         await carregarDadosDoBack();
     };
 
     window.marcarDivergenciaItem = async function(idEnvio, sku, statusDivergencia) {
-        const statusMap = {
-            'OK': 'feito',
-            'Não Tem': 'nao_tem',
-            'Qtd Insuficiente': 'parcial',
-            'Não Feito': 'nao_feito'
-        };
-        const envio = dadosLocais.find(e => String(e.id_envio) === String(idEnvio)) || {};
-        const prod = envio.itens?.[sku] || {};
-        const declarado = obterDeclaradoItem(prod);
-        const statusControle = statusMap[statusDivergencia] || 'pendente';
-        const payload = {
-            divergencia: statusDivergencia,
-            status_controle: statusControle,
-            conferido: statusControle === 'feito',
-            qtd_feita: statusControle === 'feito' ? declarado : obterQtdFeitaItem(prod),
-            qtd_faltante: statusControle === 'feito' ? 0 : Math.max(0, declarado - obterQtdFeitaItem(prod)),
-            atualizado_por: operadorAtivo || 'Operador',
-            atualizado_em: new Date().toLocaleString('pt-BR')
-        };
-        const url = `${FIREBASE_BASE}/historico_envios/${idEnvio}/itens/${encodeURIComponent(sku)}.json`;
-        await fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        const url = `${FIREBASE_BASE}/historico_envios/${idEnvio}/itens/${sku}.json`;
+        await fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ divergencia: statusDivergencia }) });
         await carregarDadosDoBack();
     };
 
-    window.marcarTodosItens = async function(idEnvio, status) {
-        const envio = dadosLocais.find(e => String(e.id_envio) === String(idEnvio));
-        if (!envio || !envio.itens || Object.keys(envio.itens).length === 0) {
-            alert('Este envio ainda não tem itens carregados. Clique em Atualizar itens primeiro.');
-            return;
-        }
-        if (!confirm(status === 'feito' ? 'Marcar todos os itens como feitos?' : 'Zerar controle de todos os itens?')) return;
 
-        const payload = {};
-        Object.keys(envio.itens).forEach(sku => {
-            const prod = envio.itens[sku] || {};
-            const declarado = obterDeclaradoItem(prod);
-            payload[sku] = {
-                ...prod,
-                status_controle: status === 'feito' ? 'feito' : 'pendente',
-                qtd_feita: status === 'feito' ? declarado : 0,
-                qtd_faltante: status === 'feito' ? 0 : declarado,
-                conferido: status === 'feito',
-                divergencia: status === 'feito' ? 'OK' : '',
-                atualizado_por: operadorAtivo || 'Operador',
-                atualizado_em: new Date().toLocaleString('pt-BR')
-            };
-        });
-
-        await fetch(`${FIREBASE_BASE}/historico_envios/${idEnvio}/itens.json`, {
-            method: 'PUT',
+    window.atualizarQtdFeitaItem = async function(idEnvio, sku, valor) {
+        const atual = (dadosLocais || []).find(x => String(x.id_envio) === String(idEnvio)) || {};
+        const item = ((atual.itens || {})[sku]) || {};
+        const declarado = Number(item.declarado) || 0;
+        const qtdFeita = Math.max(0, Number(valor) || 0);
+        const qtdFaltante = Math.max(0, declarado - qtdFeita);
+        const statusControle = qtdFeita >= declarado && declarado > 0 ? 'Feito' : (qtdFeita > 0 ? 'Parcial' : (item.status_controle || 'Pendente'));
+        const url = `${FIREBASE_BASE}/historico_envios/${idEnvio}/itens/${sku}.json`;
+        await fetch(url, {
+            method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
+            body: JSON.stringify({
+                qtd_feita: qtdFeita,
+                qtd_faltante: qtdFaltante,
+                status_controle: statusControle,
+                conferido: declarado > 0 && qtdFeita >= declarado,
+                atualizado_em: new Date().toLocaleString('pt-BR')
+            })
         });
         await carregarDadosDoBack();
     };
 
-    window.concluirEnvioComValidacao = async function(idEnvio) {
-        const envio = dadosLocais.find(e => String(e.id_envio) === String(idEnvio));
-        const resumo = calcularResumoItens(envio?.itens || {});
-        if (resumo.totalItens > 0 && resumo.itensNaoMarcados > 0) {
-            alert(`Ainda existem ${resumo.itensNaoMarcados} item(ns) sem marcação. Marque como Feito, Parcial, Não tem ou Não feito antes de concluir.`);
-            return;
-        }
-        await window.acionarBotao(idEnvio, 'Concluído');
+    window.salvarStatusControleItem = async function(idEnvio, sku, valor) {
+        const url = `${FIREBASE_BASE}/historico_envios/${idEnvio}/itens/${sku}.json`;
+        await fetch(url, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status_controle: valor || 'Pendente', atualizado_em: new Date().toLocaleString('pt-BR') })
+        });
+        await carregarDadosDoBack();
+    };
+
+    window.salvarObsItem = async function(idEnvio, sku, valor) {
+        const url = `${FIREBASE_BASE}/historico_envios/${idEnvio}/itens/${sku}.json`;
+        await fetch(url, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ observacao_item: String(valor || '').trim(), atualizado_em: new Date().toLocaleString('pt-BR') })
+        });
     };
 
     // Salvar dados transporte + dificuldade + observacao (não exige motorista)
@@ -996,33 +708,11 @@ window.reverterParaPendente = async function(idEnvio) {
         await carregarDadosDoBack();
     };
 
-
-    window.sincronizarItensEnvio = async function(idEnvio, contaNome) {
-        try {
-            const urlApi = `${API_BASE_URL}/api/full/inbounds/${encodeURIComponent(idEnvio)}/items?conta=${encodeURIComponent(contaNome || '')}`;
-            const res = await fetch(urlApi, { method: 'GET' });
-            if (!res.ok) throw new Error(`HTTP ${res.status} em ${urlApi}`);
-            const data = await res.json();
-            const itens = data.itens || data.items || {};
-            if (!itens || Object.keys(itens).length === 0) {
-                alert('Não encontrei itens para este envio. Possíveis causas: cookie expirado, envio sem composição liberada ou mudança na tela do Mercado Livre.');
-                return;
-            }
-            const urlFb = `${FIREBASE_BASE}/historico_envios/${idEnvio}/itens.json`;
-            await fetch(urlFb, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(itens) });
-            await carregarDadosDoBack();
-            alert('Itens atualizados com sucesso.');
-        } catch (err) {
-            console.error('Erro ao atualizar itens do envio:', err);
-            alert('O botão Atualizar itens precisa do backend rodando. Abra o terminal na pasta do projeto e rode: npm install e depois npm start. O backend deve ficar em http://127.0.0.1:3000.');
-        }
-    };
-
     // ---- FILTROS E RENDER ----
     function atualizarPainelCompleto() {
         filtrarEProcessarDados();
 
-        const pendentes = dadosLocais.filter(possuiDivergenciaAutomatica);
+        const pendentes = dadosLocais.filter(item => item.status === 'closed_with_changes' || Number(item.unidades_recebidas || 0) < Number(item.unidades_declaradas || 0));
         if (badgePendenciasNav) badgePendenciasNav.innerText = pendentes.length;
         renderizarTabelaPendencias(pendentes);
 
@@ -1031,17 +721,15 @@ window.reverterParaPendente = async function(idEnvio) {
         const countConcluidos = document.getElementById('count-concluidos');
         const countDivergencias = document.getElementById('count-divergencias');
         const countAgendados = document.getElementById('count-agendados');
-        const countReservarData = document.getElementById('count-reservar-data');
         const countPreparacao = document.getElementById('count-preparacao');
         const countPendenciasReport = document.getElementById('count-pendencias-report');
 
         if (countTodos) countTodos.innerText = `(${dadosLocais.length})`;
-        if (countFinalizados) countFinalizados.innerText = `(${dadosLocais.filter(i => statusMLNormalizado(i).includes('closed_ok')).length})`;
+        if (countFinalizados) countFinalizados.innerText = `(${dadosLocais.filter(i => i.status === 'closed_ok').length})`;
         if (countConcluidos) countConcluidos.innerText = `(${dadosLocais.filter(i => i.meu_status === 'Concluído').length})`;
-        if (countDivergencias) countDivergencias.innerText = `(${dadosLocais.filter(possuiDivergenciaAutomatica).length})`;
+        if (countDivergencias) countDivergencias.innerText = `(${dadosLocais.filter(i => i.status === 'closed_with_changes').length})`;
         // <-- ALTERAÇÃO: exclui envios com "Em Preparação" do contador de Agendados
-        if (countAgendados) countAgendados.innerText = `(${dadosLocais.filter(ehAgendadoOperacional).length})`;
-        if (countReservarData) countReservarData.innerText = `(${dadosLocais.filter(ehEnvioSemDataReservada).length})`;
+        if (countAgendados) countAgendados.innerText = `(${dadosLocais.filter(i => i.meu_status !== 'Concluído' && i.status !== 'closed_ok' && i.status !== 'closed_with_changes' && i.status !== 'cancelled' && !String(i.meu_status || '').toLowerCase().includes('prepar')).length})`;
         if (countPreparacao) countPreparacao.innerText = `(${dadosLocais.filter(i => String(i.meu_status || '').toLowerCase() === 'em preparação'.toLowerCase()).length})`;
         if (countPendenciasReport) countPendenciasReport.innerText = `(${dadosLocais.filter(i => i.pendencias && Object.keys(i.pendencias).length > 0).length})`;
 
@@ -1051,8 +739,48 @@ window.reverterParaPendente = async function(idEnvio) {
         renderizarGraficosDinâmicos(dadosLocais);
     }
 
+    function normalizarBusca(valor) {
+        return String(valor || '')
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[̀-ͯ]/g, '')
+            .trim();
+    }
+
+    function itemBateBusca(item, query) {
+        if (!query) return true;
+
+        const base = [
+            item.id_envio,
+            item.id,
+            item.conta,
+            item.galpao,
+            item.status,
+            item.meu_status,
+            item.operador,
+            item.observacao
+        ].map(normalizarBusca).join(' ');
+
+        if (base.includes(query)) return true;
+
+        const itens = item.itens || {};
+        return Object.keys(itens).some(sku => {
+            const prod = itens[sku] || {};
+            const extra = [
+                sku,
+                prod.sku,
+                prod.titulo,
+                prod.item_id,
+                prod.inventory_id,
+                prod.observacao_item,
+                prod.status_controle
+            ].map(normalizarBusca).join(' ');
+            return extra.includes(query);
+        });
+    }
+
     function filtrarEProcessarDados() {
-        const query = (buscaId && buscaId.value) ? buscaId.value.trim().toLowerCase() : '';
+        const query = normalizarBusca((buscaId && buscaId.value) ? buscaId.value : '');
         const contaSelecionada = filtroConta ? filtroConta.value : 'Todas';
         const galpaoSelecionado = filtroGalpao ? filtroGalpao.value : 'Todos';
         const ordemSelecionada = ordenarData ? ordenarData.value : 'recente';
@@ -1060,23 +788,22 @@ window.reverterParaPendente = async function(idEnvio) {
         dadosFiltradosAtuais = dadosLocais.filter(item => {
             const bateConta = (contaSelecionada === 'Todas' || item.conta === contaSelecionada);
             const bateGalpao = (galpaoSelecionado === 'Todos' || item.galpao === galpaoSelecionado);
-            const itensObj = item.itens || {};
-            const textoItens = Object.keys(itensObj).map(sku => `${sku} ${itensObj[sku]?.titulo || ''}`).join(' ').toLowerCase();
-            const bateId = (query === '' || String(item.id_envio || '').toLowerCase().includes(query) || textoItens.includes(query));
+            const bateBusca = itemBateBusca(item, query);
 
             let batePill = true;
-            if (statusPillAtivo === 'closed_ok') batePill = statusMLNormalizado(item).includes('closed_ok');
+            if (statusPillAtivo === 'closed_ok') batePill = (item.status === 'closed_ok');
             else if (statusPillAtivo === 'concluidos') batePill = (item.meu_status === 'Concluído');
-            else if (statusPillAtivo === 'pending') batePill = ehAgendadoOperacional(item);
-            else if (statusPillAtivo === 'reservar_data') batePill = ehEnvioSemDataReservada(item);
-            else if (statusPillAtivo === 'closed_with_changes') batePill = possuiDivergenciaAutomatica(item);
-            else if (statusPillAtivo === 'in_preparacao') batePill = (normalizarTexto(item.meu_status || '') === 'em preparacao');
+            else if (statusPillAtivo === 'pending') batePill = (item.meu_status !== 'Concluído' && item.status !== 'closed_ok' && item.status !== 'closed_with_changes' && item.status !== 'cancelled' && !String(item.meu_status || '').toLowerCase().includes('prepar'));
+            else if (statusPillAtivo === 'closed_with_changes') batePill = (item.status === 'closed_with_changes');
+            else if (statusPillAtivo === 'in_preparacao') batePill = (String(item.meu_status || '').toLowerCase() === 'em preparação'.toLowerCase());
             else if (statusPillAtivo === 'pendencia') batePill = (item.pendencias && Object.keys(item.pendencias).length > 0);
 
-            return bateConta && bateGalpao && bateId && batePill;
+            return bateConta && bateGalpao && bateBusca && batePill;
         });
 
-        dadosFiltradosAtuais.sort((a, b) => compararDataPainel(a, b, ordemSelecionada));
+        dadosFiltradosAtuais.sort((a, b) => {
+            return ordemSelecionada === 'recente' ? new Date(b.data) - new Date(a.data) : new Date(a.data) - new Date(b.data);
+        });
 
         paginaAtual = 1;
         recalcularEExibirPagina();
@@ -1144,14 +871,11 @@ window.reverterParaPendente = async function(idEnvio) {
             const dataLimite = item.data_limite_pronto || '';
             const horaLimite = item.hora_limite_pronto || '';
             const totalPecas = Number(item.unidades_declaradas) || 0;
-            const resumoItens = calcularResumoItens(item.itens || {});
 
-            // Progresso parcial: se os itens foram carregados, o painel passa a usar o controle por SKU.
-            // Se ainda não tiver composição, mantém a soma manual da Adição Rápida.
+            // Progresso parcial (soma das quantidades adicionadas)
             const progressoObj = item.progresso || item.progresso_parcial || {};
-            let totalProgressoManual = 0;
-            Object.keys(progressoObj).forEach(k => { totalProgressoManual += Number(progressoObj[k].quantidade) || 0; });
-            const totalProgresso = resumoItens.totalItens > 0 ? resumoItens.pecasFeitas : totalProgressoManual;
+            let totalProgresso = 0;
+            Object.keys(progressoObj).forEach(k => { totalProgresso += Number(progressoObj[k].quantidade) || 0; });
             const restantePecas = Math.max(0, totalPecas - totalProgresso);
 
             // Pendências existentes
@@ -1165,21 +889,15 @@ window.reverterParaPendente = async function(idEnvio) {
             const tempoPorPessoaMin = Math.ceil(tempoEstimadoMinutos / pessoasAlocadas);
             const tempoFormatado = formatarTempoEstimado(tempoEstimadoMinutos);
 
-            const statusML = statusMLNormalizado(item);
-            let statusLabel = dataValidaReservada(item) ? 'Agendado' : 'Reservar Data';
-            let statusClass = dataValidaReservada(item) ? 'badge-azul' : 'badge-laranja';
-            if (statusML.includes('closed_ok')) { statusLabel = 'Finalizado'; statusClass = 'badge-verde'; }
-            else if (statusML.includes('closed_with_changes') || statusML.includes('diverg')) { statusLabel = 'Divergência'; statusClass = 'badge-laranja'; }
-            else if (statusML.includes('cancelled') || statusML.includes('canceled') || statusML.includes('cancelado')) { statusLabel = 'Cancelado'; statusClass = 'badge-vermelho'; }
-            else if (statusML.includes('expired') || statusML.includes('vencido')) { statusLabel = 'Vencido'; statusClass = 'badge-vermelho'; }
+            let statusLabel = 'Agendado';
+            let statusClass = 'badge-azul';
+            if (item.status === 'closed_ok') { statusLabel = 'Finalizado'; statusClass = 'badge-verde'; }
+            else if (item.status === 'closed_with_changes') { statusLabel = 'Divergência'; statusClass = 'badge-laranja'; }
+            else if (item.status === 'cancelled') { statusLabel = 'Cancelado'; statusClass = 'badge-vermelho'; }
 
-            const temDataReservada = dataValidaReservada(item);
-            const dataObjeto = temDataReservada ? new Date(item.data || item.data_reservada || item.appointment_date) : null;
-            const dataFormatada = dataObjeto ? dataObjeto.toLocaleDateString('pt-BR') : '';
-            const horaFormatada = dataObjeto ? dataObjeto.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
-            const avisoSemDataHtml = !temDataReservada
-                ? '<div style="margin-top:4px; color:#92400e; background:#fffbeb; border:1px solid #fde68a; padding:4px 6px; border-radius:4px; font-size:10px; font-weight:800;">SEM DATA RESERVADA</div>'
-                : '';
+            const dataObjeto = new Date(item.data);
+            const dataFormatada = isNaN(dataObjeto.getTime()) ? '' : dataObjeto.toLocaleDateString('pt-BR');
+            const horaFormatada = isNaN(dataObjeto.getTime()) ? '' : dataObjeto.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
             const pendBadgeHtml = totalPendenciasCount > 0 ? `<div style="background:#ef4444; color:white; padding:2px 6px; border-radius:4px; font-size:10px; display:inline-block; margin-top:6px;">🚨 PENDÊNCIA (${totalPendenciasCount})</div>` : '';
 
@@ -1229,16 +947,14 @@ window.reverterParaPendente = async function(idEnvio) {
                 <td>
                   <div class="label">Quantidade</div>
                   <div class="value">
-                    <strong>${formatarNumeroOuTraco(item.unidades_declaradas)}</strong> peças<br>
-                    <span style="font-size:11px; color:#6b7280;">Aptas ML: ${formatarNumeroOuTraco(item.unidades_recebidas)}</span><br>
+                    <strong>${totalPecas}</strong> peças<br>
                     <small id="estimativa-${item.id_envio}" style="color:#6b7280;"
                     data-total="${totalPecas}"
                     data-progresso="${totalProgresso}"
                     data-restante="${restantePecas}"
                     >
                     Feitas: ${totalProgresso} — Faltam: ${restantePecas} • ⏳ Est: ${tempoFormatado} / ${pessoasAlocadas} Ops
-                    </small><br>
-                    ${badgeResumoItensHtml(resumoItens)}
+                    </small>
                   </div>
                 </td>
                 <td>
@@ -1258,7 +974,7 @@ window.reverterParaPendente = async function(idEnvio) {
                 <td>
                   <div class="label">Data / Prazo</div>
                   <div class="value">
-                    <div style="margin-bottom:6px;"><strong>${dataFormatada || 'Reservar data'}</strong> <span style="color:#6b7280; font-size:12px;">${horaFormatada}</span>${avisoSemDataHtml}</div>
+                    <div style="margin-bottom:6px;"><strong>${dataFormatada}</strong> <span style="color:#6b7280; font-size:12px;">${horaFormatada}</span></div>
                     <div style="display:flex; flex-direction:column; gap:4px; background-color: #f8fafc; padding: 6px; border-radius: 4px; border: 1px solid #e2e8f0;">
                     <span style="font-size: 9px; font-weight: bold; color: #475569;">PRAZO INTERNO:</span>
                     <input type="date" value="${dataLimite}" onchange="window.salvarMetaPrazo('${item.id_envio}', 'data_limite_pronto', this.value)" style="font-size:11px; padding:4px; border:1px solid #cbd5e1; border-radius:4px; outline:none;" onclick="event.stopPropagation()">
@@ -1271,7 +987,7 @@ window.reverterParaPendente = async function(idEnvio) {
                   <div class="value text-center" onclick="event.stopPropagation()">
                     <div style="display:flex; gap:6px; justify-content:center;">
                     <button class="btn-action btn-preparar" style="padding:6px 10px;" onclick="event.stopPropagation(); window.acionarBotao('${item.id_envio}', 'Em Preparação')">Iniciar</button>
-                    <button class="btn-action primary btn-concluir" style="padding:6px 10px;" onclick="event.stopPropagation(); window.concluirEnvioComValidacao('${item.id_envio}')">Concluir</button>
+                    <button class="btn-action primary btn-concluir" style="padding:6px 10px;" onclick="event.stopPropagation(); window.acionarBotao('${item.id_envio}', 'Concluído')">Concluir</button>
                     ${revertBtnHtml}
                     ${voltarParaPendenteBtnHtml}
                     </div>
@@ -1285,72 +1001,83 @@ window.reverterParaPendente = async function(idEnvio) {
             trDetalhe.style.display = 'none';
             trDetalhe.style.backgroundColor = '#f8fafc';
 
-            // Itens HTML: controle por SKU com feito/parcial/não tem/não feito
+            // Itens HTML (layout moderno)
             let itensHtml = '';
+            let resumoItensHtml = '';
             const listaItens = (item.itens && Object.keys(item.itens).length > 0) ? item.itens : null;
             if (listaItens) {
+                const itensEntries = Object.entries(listaItens);
+                let feitos = 0, parciais = 0, naoFeitos = 0, semMarcar = 0;
+
                 itensHtml += `
-                    <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; padding:8px 10px; margin-bottom:8px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; flex-wrap:wrap;">
-                        <div style="font-size:12px; color:#475569; font-weight:800;">
-                            Controle dos itens: ${resumoItens.itensFeitos}/${resumoItens.totalItens} feitos • ${resumoItens.itensParciais} parciais • ${resumoItens.itensNaoFeitos} não feitos • ${resumoItens.itensNaoMarcados} sem marcar
+                    <div class="items-board-v2">
+                        <div class="items-board-head">
+                            <div>Item</div>
+                            <div>Declarado</div>
+                            <div>Qtd feita</div>
+                            <div>Status</div>
+                            <div>Observação</div>
                         </div>
-                        <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
-                            <button class="btn-action" style="padding:6px 8px; font-size:12px; background:#ecfdf5; color:#047857; border:1px solid #a7f3d0;" onclick="event.stopPropagation(); window.marcarTodosItens('${item.id_envio}', 'feito')">Marcar todos feitos</button>
-                            <button class="btn-action" style="padding:6px 8px; font-size:12px;" onclick="event.stopPropagation(); window.marcarTodosItens('${item.id_envio}', 'pendente')">Limpar marcações</button>
-                        </div>
-                    </div>
-                `;
+                        <div class="items-board-body">`;
 
-                Object.keys(listaItens).forEach(sku => {
-                    const prod = listaItens[sku] || {};
-                    const keyDom = domKeyItem(item.id_envio, sku);
-                    const declaradoItem = obterDeclaradoItem(prod);
-                    const qtdFeita = obterQtdFeitaItem(prod);
-                    const faltanteItem = Math.max(0, declaradoItem - qtdFeita);
-                    const statusControle = obterStatusControleItem(prod);
-                    const checkConcluido = (statusControle === 'feito' || prod.conferido || (declaradoItem > 0 && qtdFeita >= declaradoItem)) ? 'checked' : '';
-                    const estiloTexto = checkConcluido ? 'text-decoration: line-through; color: #10b981;' : '';
-                    const statusBadgeCor = statusControle === 'feito' ? '#10b981' : (statusControle === 'parcial' ? '#f59e0b' : (statusControle === 'nao_tem' || statusControle === 'nao_feito' ? '#ef4444' : '#64748b'));
+                itensEntries.forEach(([sku, prod]) => {
+                    prod = prod || {};
+                    const declarado = Number(prod.declarado) || 0;
+                    const qtdFeita = Number(prod.qtd_feita) || 0;
+                    const statusControle = String(prod.status_controle || 'Pendente');
+                    const conferido = !!prod.conferido || (declarado > 0 && qtdFeita >= declarado);
+                    const itemIdInfo = prod.item_id || prod.inventory_id || '';
+                    const obsSafe = String(prod.observacao_item || '').replace(/"/g, '&quot;');
+
+                    if (conferido || statusControle === 'Feito') feitos++;
+                    else if (qtdFeita > 0 || statusControle === 'Parcial') parciais++;
+                    else naoFeitos++;
+                    if (!prod.status_controle || statusControle === 'Pendente') semMarcar++;
+
                     itensHtml += `
-                    <div style="display:grid; grid-template-columns: minmax(260px, 1fr) 110px 110px 140px minmax(180px, 0.7fr) 190px; gap:10px; padding:10px 12px; border-bottom:1px solid #e6eef6; align-items:center; background:${statusControle === 'feito' ? '#f0fdf4' : '#fff'};" onclick="event.stopPropagation()">
-                        <div style="display:flex; gap:10px; align-items:flex-start; min-width:0;">
-                            <input type="checkbox" ${checkConcluido} onchange="window.marcarItemConferido('${item.id_envio}', '${escapeHTML(sku)}', this.checked)" style="transform:scale(1.1); cursor:pointer; margin-top:2px;">
-                            <div style="${estiloTexto}; min-width:0;">
-                                <strong>[${escapeHTML(sku)}]</strong> ${escapeHTML(prod.titulo || '')}<br>
-                                <small style="color:#94a3b8;">${escapeHTML(prod.item_id || prod.inventory_id || '')}</small>
-                                ${prod.atualizado_por ? `<br><small style="color:#64748b;">Último: ${escapeHTML(prod.atualizado_por)} • ${escapeHTML(prod.atualizado_em || '')}</small>` : ''}
+                        <div class="item-row-v2 ${conferido ? 'done' : ''}">
+                            <div class="item-main-v2">
+                                <input type="checkbox" ${conferido ? 'checked' : ''} onchange="window.marcarItemConferido('${item.id_envio}', '${sku}', this.checked)">
+                                <div class="item-copy-v2">
+                                    <div class="item-sku-v2">[${sku}]</div>
+                                    <div class="item-title-v2">${prod.titulo || ''}</div>
+                                    <div class="item-sub-v2">${itemIdInfo}</div>
+                                </div>
                             </div>
-                        </div>
-                        <div style="font-size:12px; color:#475569;"><span style="display:block; color:#94a3b8;">Declarado</span><strong>${formatarNumeroOuTraco(declaradoItem)}</strong> un</div>
-                        <div>
-                            <label style="display:block; font-size:10px; color:#64748b; margin-bottom:3px; font-weight:800;">Qtd feita</label>
-                            <input id="item-qtd-${keyDom}" data-declarado="${declaradoItem}" type="number" min="0" max="${declaradoItem}" value="${qtdFeita}" style="width:100%; padding:6px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px;" onchange="window.salvarControleItem('${item.id_envio}', '${escapeHTML(sku)}', '${keyDom}')">
-                            <small style="color:${faltanteItem > 0 ? '#ef4444' : '#10b981'}; font-weight:700;">Faltam ${faltanteItem}</small>
-                        </div>
-                        <div>
-                            <label style="display:block; font-size:10px; color:#64748b; margin-bottom:3px; font-weight:800;">Status</label>
-                            <select id="item-status-${keyDom}" onchange="window.salvarControleItem('${item.id_envio}', '${escapeHTML(sku)}', '${keyDom}')" style="width:100%; padding:6px; border-radius:6px; border:1px solid #cbd5e1; font-size:12px; color:${statusBadgeCor}; font-weight:800;">
-                                <option value="pendente" ${statusControle === 'pendente' ? 'selected' : ''}>Pendente</option>
-                                <option value="feito" ${statusControle === 'feito' ? 'selected' : ''}>Feito</option>
-                                <option value="parcial" ${statusControle === 'parcial' ? 'selected' : ''}>Parcial</option>
-                                <option value="nao_tem" ${statusControle === 'nao_tem' ? 'selected' : ''}>Não tem</option>
-                                <option value="nao_feito" ${statusControle === 'nao_feito' ? 'selected' : ''}>Não feito</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label style="display:block; font-size:10px; color:#64748b; margin-bottom:3px; font-weight:800;">Obs. do item</label>
-                            <input id="item-obs-${keyDom}" type="text" value="${escapeHTML(prod.observacao_item || '')}" placeholder="Ex: caixa avariada" style="width:100%; padding:6px; border:1px solid #cbd5e1; border-radius:6px; font-size:12px;" onchange="window.salvarControleItem('${item.id_envio}', '${escapeHTML(sku)}', '${keyDom}')">
-                        </div>
-                        <div style="display:flex; gap:6px; justify-content:flex-end; flex-wrap:wrap;">
-                            <button class="btn-action" style="padding:6px 8px; font-size:12px; background:#ecfdf5; color:#047857; border:1px solid #a7f3d0;" onclick="window.marcarItemRapido('${item.id_envio}', '${escapeHTML(sku)}', '${keyDom}', 'feito')">Feito</button>
-                            <button class="btn-action" style="padding:6px 8px; font-size:12px; background:#fff7ed; color:#c2410c; border:1px solid #fed7aa;" onclick="window.marcarItemRapido('${item.id_envio}', '${escapeHTML(sku)}', '${keyDom}', 'parcial')">Parcial</button>
-                            <button class="btn-action" style="padding:6px 8px; font-size:12px; background:#fef2f2; color:#b91c1c; border:1px solid #fecaca;" onclick="window.marcarItemRapido('${item.id_envio}', '${escapeHTML(sku)}', '${keyDom}', 'nao_tem')">Não tem</button>
-                        </div>
-                    </div>
-                    `;
+                            <div class="item-cell-v2 declared">
+                                <span class="field-label-v2">Declarado</span>
+                                <strong>${declarado} un</strong>
+                            </div>
+                            <div class="item-cell-v2">
+                                <span class="field-label-v2">Qtd feita</span>
+                                <input class="field-input-v2" type="number" min="0" value="${qtdFeita}" onchange="window.atualizarQtdFeitaItem('${item.id_envio}', '${sku}', this.value)">
+                            </div>
+                            <div class="item-cell-v2">
+                                <span class="field-label-v2">Status</span>
+                                <select class="field-input-v2" onchange="window.salvarStatusControleItem('${item.id_envio}', '${sku}', this.value)">
+                                    <option value="Pendente" ${statusControle === 'Pendente' ? 'selected' : ''}>Pendente</option>
+                                    <option value="Parcial" ${statusControle === 'Parcial' ? 'selected' : ''}>Parcial</option>
+                                    <option value="Feito" ${statusControle === 'Feito' ? 'selected' : ''}>Feito</option>
+                                    <option value="Não Feito" ${statusControle === 'Não Feito' ? 'selected' : ''}>Não Feito</option>
+                                </select>
+                            </div>
+                            <div class="item-cell-v2">
+                                <span class="field-label-v2">Obs.</span>
+                                <input class="field-input-v2" type="text" placeholder="Ex: caixa avariada" value="${obsSafe}" onblur="window.salvarObsItem('${item.id_envio}', '${sku}', this.value)">
+                            </div>
+                        </div>`;
                 });
-            }
 
+                itensHtml += `</div></div>`;
+                resumoItensHtml = `
+                    <div class="items-summary-v2">
+                        <div class="summary-chip-v2"><strong>${itensEntries.length}</strong><span>itens</span></div>
+                        <div class="summary-chip-v2 green"><strong>${feitos}</strong><span>feitos</span></div>
+                        <div class="summary-chip-v2 blue"><strong>${parciais}</strong><span>parciais</span></div>
+                        <div class="summary-chip-v2 red"><strong>${naoFeitos}</strong><span>não feitos</span></div>
+                        <div class="summary-chip-v2 amber"><strong>${semMarcar}</strong><span>sem marcar</span></div>
+                    </div>`;
+            }
 
             // Progresso e Pendencias lists
             let progressoHtml = '';
@@ -1389,82 +1116,106 @@ window.reverterParaPendente = async function(idEnvio) {
 
             const isConcluido = statusLower === 'concluído' || statusLower === 'concluido';
 
-            const adicaoSection = isConcluido ? '' : `
-                <h4 style="margin:0 0 8px 0; font-size:13px; color:#374151;">➕ Adição Rápida (Parcial)</h4>
-                <div class="adicao-rapida-inputs" style="display:flex; gap:8px; margin-bottom:8px;">
-                <input id="input-produto-${item.id_envio}" type="text" placeholder="Nome ou Código do produto" style="flex:1; padding:8px; border:1px solid #cbd5e1; border-radius:6px;" onclick="event.stopPropagation()">
-                <input id="input-quant-${item.id_envio}" type="number" min="1" placeholder="Qtd feita" style="width:110px; padding:8px; border:1px solid #cbd5e1; border-radius:6px;" onclick="event.stopPropagation()">
-                <button class="btn-action primary" style="padding:8px 12px;" onclick="event.stopPropagation(); window.adicionarProgresso('${item.id_envio}', document.getElementById('input-produto-${item.id_envio}').value, document.getElementById('input-quant-${item.id_envio}').value);">Adicionar</button>
-                </div>
-                <div class="adicao-rapida-list" style="max-height:160px; overflow:auto; border:1px solid #eef2f7; border-radius:6px;">
-                ${progressoHtml || '<div style="padding:8px; color:#9aa4b2;">Nenhum registro de produção parcial.</div>'}
-                </div>
-            `;
+            const adicaoSection = isConcluido ? `
+                <div class="detail-empty-v2">Envio concluído — produção parcial bloqueada.</div>
+            ` : `
+                <div class="detail-card-v2">
+                    <div class="detail-card-head-v2">
+                        <h4>Adição rápida</h4>
+                        <p>Lance produção parcial por produto.</p>
+                    </div>
+                    <div class="stack-form-v2">
+                        <input id="input-produto-${item.id_envio}" type="text" placeholder="Nome ou código do produto" class="field-input-v2" onclick="event.stopPropagation()">
+                        <div class="inline-form-v2">
+                            <input id="input-quant-${item.id_envio}" type="number" min="1" placeholder="Qtd feita" class="field-input-v2" onclick="event.stopPropagation()">
+                            <button class="btn-action primary" onclick="event.stopPropagation(); window.adicionarProgresso('${item.id_envio}', document.getElementById('input-produto-${item.id_envio}').value, document.getElementById('input-quant-${item.id_envio}').value);">Adicionar</button>
+                        </div>
+                    </div>
+                    <div class="list-box-v2">
+                        ${progressoHtml || '<div class="empty-list-v2">Nenhum registro de produção parcial.</div>'}
+                    </div>
+                </div>`;
 
-            const pendenciaSection = isConcluido ? '' : `
-                <h4 style="margin:0 0 8px 0; font-size:13px; color:#611a15;">🚨 Reportar Pendência</h4>
-                <div class="reportar-pendencia-inputs" style="display:flex; gap:8px; margin-bottom:8px;">
-                <input id="input-pend-prod-${item.id_envio}" type="text" placeholder="Produto ausente / código" style="flex:1; padding:8px; border:1px solid #f5c6cb; border-radius:6px;" onclick="event.stopPropagation()">
-                <input id="input-pend-quant-${item.id_envio}" type="number" min="0" placeholder="Qtd faltando" style="width:110px; padding:8px; border:1px solid #f5c6cb; border-radius:6px;" onclick="event.stopPropagation()">
-                <button class="btn-action" style="padding:8px 12px; background:#ef4444; color:white; border:none; border-radius:6px;" onclick="event.stopPropagation(); window.reportarPendencia('${item.id_envio}', document.getElementById('input-pend-prod-${item.id_envio}').value, document.getElementById('input-pend-quant-${item.id_envio}').value);">Reportar</button>
-                </div>
-                <div class="reportar-pendencia-list" style="max-height:160px; overflow:auto; border:1px solid #ffebeb; border-radius:6px;">
-                ${pendenciasHtml || '<div style="padding:8px; color:#9aa4b2;">Nenhuma pendência reportada.</div>'}
-                </div>
-            `;
+            const pendenciaSection = isConcluido ? `
+                <div class="detail-empty-v2">Envio concluído — pendências operacionais bloqueadas.</div>
+            ` : `
+                <div class="detail-card-v2">
+                    <div class="detail-card-head-v2">
+                        <h4>Pendências</h4>
+                        <p>Registre produto ausente, divergência ou falta.</p>
+                    </div>
+                    <div class="stack-form-v2">
+                        <input id="input-pend-prod-${item.id_envio}" type="text" placeholder="Produto ausente / código" class="field-input-v2 danger" onclick="event.stopPropagation()">
+                        <div class="inline-form-v2">
+                            <input id="input-pend-quant-${item.id_envio}" type="number" min="0" placeholder="Qtd faltando" class="field-input-v2 danger" onclick="event.stopPropagation()">
+                            <button class="btn-action btn-danger-v2" onclick="event.stopPropagation(); window.reportarPendencia('${item.id_envio}', document.getElementById('input-pend-prod-${item.id_envio}').value, document.getElementById('input-pend-quant-${item.id_envio}').value);">Reportar</button>
+                        </div>
+                    </div>
+                    <div class="list-box-v2 danger">
+                        ${pendenciasHtml || '<div class="empty-list-v2">Nenhuma pendência reportada.</div>'}
+                    </div>
+                </div>`;
 
-            // Dados de Transporte + dificuldade + observacao + estimativas + botões de registrar tempo
             const valorMotorista = item.motorista || '';
             const valorCaminhao = item.caminhao_placa || '';
-            const valorDificuldade = item.dificuldade || '';
             const valorObservacao = item.observacao || '';
 
-            // NOTE: added ids for large estimativa elements to allow immediate updates
             const transporteHtml = `
-                <div style="padding:12px; display:flex; flex-direction:column; gap:8px;">
-                    <div style="font-weight:700; color:#2d3748; display:flex; justify-content:space-between; align-items:center;">
-                    <span>🚚 Dados de Transporte & Meta</span>
-                    <div style="display:flex; gap:8px; align-items:center;">
-                    <button class="btn-action" style="padding:6px 8px; font-size:12px;" onclick="window.registrarTempoPreparacao('${item.id_envio}', 'inicio')">Registrar Início</button>
-                    <button class="btn-action" style="padding:6px 8px; font-size:12px;" onclick="window.registrarTempoPreparacao('${item.id_envio}', 'fim')">Registrar Fim</button>
-                    <button class="btn-action" style="padding:6px 8px; font-size:12px;" onclick="window.salvarDadosTransporte('${item.id_envio}')">Salvar</button>
+                <div class="detail-card-v2">
+                    <div class="detail-card-head-v2 between">
+                        <div>
+                            <h4>Transporte & meta</h4>
+                            <p>Controle operacional do envio.</p>
+                        </div>
+                        <div class="mini-actions-v2">
+                            <button class="btn-action" onclick="window.registrarTempoPreparacao('${item.id_envio}', 'inicio')">Registrar início</button>
+                            <button class="btn-action" onclick="window.registrarTempoPreparacao('${item.id_envio}', 'fim')">Registrar fim</button>
+                            <button class="btn-action" onclick="window.salvarDadosTransporte('${item.id_envio}')">Salvar</button>
+                        </div>
                     </div>
+                    <div class="two-col-form-v2">
+                        <input id="input-motorista-${item.id_envio}" type="text" placeholder="Motorista" value="${(valorMotorista+'').replace(/"/g,'&quot;')}" class="field-input-v2">
+                        <input id="input-caminhao-${item.id_envio}" type="text" placeholder="Caminhão / Placa" value="${(valorCaminhao+'').replace(/"/g,'&quot;')}" class="field-input-v2">
                     </div>
-                    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                    <input id="input-motorista-${item.id_envio}" type="text" placeholder="Motorista" value="${(valorMotorista+'').replace(/"/g,'&quot;')}" style="flex:1; min-width:150px; padding:8px; border-radius:6px; border:1px solid #e2e8f0;">
-                    <input id="input-caminhao-${item.id_envio}" type="text" placeholder="Caminhão / Placa" value="${(valorCaminhao+'').replace(/"/g,'&quot;')}" style="width:170px; padding:8px; border-radius:6px; border:1px solid #e2e8f0;">
+                    <textarea id="textarea-observacao-${item.id_envio}" placeholder="Observação livre" class="field-input-v2 textarea-v2">${valorObservacao || ''}</textarea>
+                    <div class="meta-grid-v2">
+                        <div class="meta-card-v2">
+                            <span>Estimativa</span>
+                            <strong id="estimativa-minutos-${item.id_envio}">${tempoEstimadoMinutos} min</strong>
+                        </div>
+                        <div class="meta-card-v2">
+                            <span>Horas (${pessoasAlocadas} ops)</span>
+                            <strong id="estimativa-horas-${item.id_envio}">${(tempoEstimadoMinutos/60/pessoasAlocadas).toFixed(1)} h</strong>
+                        </div>
+                        ${item.hora_inicio_preparacao ? `<div class="meta-card-v2"><span>Início</span><strong>${item.hora_inicio_preparacao}</strong></div>` : ''}
+                        ${item.hora_fim_preparacao ? `<div class="meta-card-v2"><span>Fim</span><strong>${item.hora_fim_preparacao}</strong></div>` : ''}
                     </div>
-                    <div>
-                    <textarea id="textarea-observacao-${item.id_envio}" placeholder="Observação / Parenteses livre" style="width:100%; margin-top:8px; min-height:60px; padding:8px; border-radius:6px; border:1px solid #e2e8f0;">${(valorObservacao||'')}</textarea>
-                    </div>
+                </div>`;
 
-                    <div style="display:flex; gap:12px; align-items:center; margin-top:6px; font-size:13px; color:#6b7280;">
-                    <div>Estimativa (3 min/peça/pessoa): <strong id="estimativa-minutos-${item.id_envio}">${tempoEstimadoMinutos} min</strong></div>
-                    <div>Horas estimadas (com <span id="estimativa-ops-${item.id_envio}">${pessoasAlocadas}</span> ops): <strong id="estimativa-horas-${item.id_envio}">${(tempoEstimadoMinutos/60/pessoasAlocadas).toFixed(1)} h</strong></div>
-                    ${item.hora_inicio_preparacao ? `<div>Início: ${item.hora_inicio_preparacao}</div>` : ''}
-                    ${item.hora_fim_preparacao ? `<div>Fim: ${item.hora_fim_preparacao}</div>` : ''}
-                    </div>
-                </div>
-            `;
-
-            // Montagem final do detalhe: inclui input de pessoas e botão Atualizar
             trDetalhe.innerHTML = `
-                <td colspan="8" style="padding:12px;">
-                    <div style="background:white; border:1px solid #e2e8f0; border-radius:8px; padding:10px;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                    <div style="font-weight:700; color:#374151;">📦 COMPOSIÇÃO & CONTROLES</div>
-                    <button class="btn-action" style="padding:6px 8px; font-size:12px;" onclick="event.stopPropagation(); window.sincronizarItensEnvio('${item.id_envio}', '${escapeHTML(item.conta || '')}')">Atualizar itens</button>
-                    <div style="font-size:12px; color:#6b7280; display:flex; gap:8px; align-items:center;">
-                    Equipe:
-                    <input id="pessoas-input-${item.id_envio}" type="number" value="${pessoasAlocadas}" min="1" style="width:60px; padding:4px; border:1px solid #cbd5e1; border-radius:4px;" onclick="event.stopPropagation()">
-                    <button class="btn-action" style="padding:6px 8px;" onclick="event.stopPropagation(); window.atualizarEquipe('${item.id_envio}')">Atualizar</button>
-                    </div>
-                    </div>
-                    ${itensHtml ? `<div style="margin-bottom:8px;">${itensHtml}</div>` : `<div style="font-size:12px; color:#9aa4b2; margin-bottom:8px;">Nenhuma composição de itens registrada. Clique em <strong>Atualizar itens</strong> para puxar automaticamente do Mercado Livre.</div>`}
-                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
-                    <div>${transporteHtml}</div>
-                    <div>${isConcluido ? `<div style="padding:10px; color:#6b7280;">Envio concluído — Adição rápida e Reportar pendência desabilitados. Dados, Dificuldade e Observação editáveis.</div>` : `${adicaoSection}${pendenciaSection}`}</div>
-                    </div>
+                <td colspan="8" class="detail-cell-v2">
+                    <div class="detail-shell-v2">
+                        <div class="detail-topbar-v2">
+                            <div>
+                                <div class="detail-title-v2">Composição & controles</div>
+                                <div class="detail-subtitle-v2">Envio #${item.id_envio} • ${item.conta || 'Sem conta'} • ${item.galpao || 'Sem galpão'}</div>
+                            </div>
+                            <div class="detail-topbar-actions-v2">
+                                <span class="team-label-v2">Equipe</span>
+                                <input id="pessoas-input-${item.id_envio}" type="number" value="${pessoasAlocadas}" min="1" class="field-input-v2 team-input-v2" onclick="event.stopPropagation()">
+                                <button class="btn-action" onclick="event.stopPropagation(); window.atualizarEquipe('${item.id_envio}')">Atualizar</button>
+                            </div>
+                        </div>
+
+                        <div class="detail-card-v2 item-card-v2">
+                            ${itensHtml ? `${resumoItensHtml}${itensHtml}` : `<div class="detail-empty-v2">Nenhuma composição de itens registrada.</div>`}
+                        </div>
+
+                        <div class="detail-grid-v2">
+                            ${transporteHtml}
+                            ${adicaoSection}
+                            ${pendenciaSection}
+                        </div>
                     </div>
                 </td>
             `;
@@ -1500,9 +1251,7 @@ window.reverterParaPendente = async function(idEnvio) {
         }
         envios.forEach(item => {
             const tr = document.createElement('tr');
-            const declarado = numeroValido(item.unidades_declaradas) || 0;
-            const recebido = numeroValido(item.unidades_recebidas);
-            const faltas = recebido === null ? '—' : Math.max(0, declarado - recebido);
+            const faltas = (Number(item.unidades_declaradas) || 0) - (Number(item.unidades_recebidas) || 0);
             tr.innerHTML = `
                 <td><strong>${item.conta || '—'}</strong></td>
                 <td><mark>#${item.id_envio || '—'}</mark></td>
@@ -1520,7 +1269,7 @@ window.reverterParaPendente = async function(idEnvio) {
             const qtdAraca = envios.filter(i => String(i.galpao || '').toLowerCase().includes('araçariguama') || String(i.galpao || '').toLowerCase().includes('aracariguama')).length;
             const qtdPerus = envios.filter(i => String(i.galpao || '').toLowerCase().includes('perus')).length;
             let totalDec = 0, totalRec = 0;
-            envios.forEach(i => { totalDec += numeroValido(i.unidades_declaradas) || 0; const rec = numeroValido(i.unidades_recebidas); if (rec !== null) totalRec += rec; });
+            envios.forEach(i => { totalDec += Number(i.unidades_declaradas) || 0; totalRec += Number(i.unidades_recebidas) || 0; });
 
             const ctxG = document.getElementById('chart-galpoes');
             if (ctxG) {
@@ -1550,7 +1299,7 @@ window.reverterParaPendente = async function(idEnvio) {
         if (!cardEnvios || !cardDeclarado || !cardRecebido || !cardDiscrepancia) return;
         cardEnvios.innerText = envios.length;
         let dec = 0, rec = 0;
-        envios.forEach(e => { dec += numeroValido(e.unidades_declaradas) || 0; const r = numeroValido(e.unidades_recebidas); if (r !== null) rec += r; });
+        envios.forEach(e => { dec += Number(e.unidades_declaradas) || 0; rec += Number(e.unidades_recebidas) || 0; });
         cardDeclarado.innerText = dec.toLocaleString('pt-BR');
         cardRecebido.innerText = rec.toLocaleString('pt-BR');
         cardDiscrepancia.innerText = dec > 0 ? `${((dec - rec) / dec * 100).toFixed(1)}%` : '0%';

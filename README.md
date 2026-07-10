@@ -1,0 +1,1 @@
+Substitua os 3 arquivos do front-end: index.html, script.js e style.css.
