@@ -3,20 +3,28 @@ const BACKEND = (window.DASHFULL_BACKEND || "https://atendente-dashfull-itens-wo
 let base = {};
 let envios = [];
 let itensFlat = [];
+let detailCache = {};
+let loadingDetails = new Set();
+let prefetchTimer = null;
 let view = "resumo";
 let currentOperator = localStorage.getItem("dashfull_operator") || "";
 let openOperacaoId = null;
 let openItemsId = null;
 
-const DATA_REFRESH_MS = 6000;
-const STATUS_REFRESH_MS = 12000;
+const DATA_REFRESH_MS = 12000;
+const STATUS_REFRESH_MS = 15000;
 const AUTO_SYNC_ITEMS_MS = 180000;
 const AUTO_SYNC_LOCK_KEY = "dashfull_auto_sync_items_lock";
+const DETAIL_CACHE_KEY = "dashfull_detail_cache_v15";
+const DETAIL_CACHE_MAX = 120;
+const DETAIL_CACHE_TTL_MS = 1000 * 60 * 60 * 12;
 let refreshTimer = null;
 let statusTimer = null;
 let autoSyncTimer = null;
 let isLoadingData = false;
 let lastDataSignature = "";
+let enviosRenderLimit = 80;
+let itensRenderLimit = 400;
 
 const COLORS = ["#2563eb","#22c55e","#f59e0b","#ef4444","#8b5cf6","#06b6d4","#f97316","#64748b"];
 const $ = (id) => document.getElementById(id);
@@ -105,14 +113,67 @@ function toast(msg) {
 }
 
 
+
+function loadDetailCache() {
+  try {
+    const raw = localStorage.getItem(DETAIL_CACHE_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    const now = Date.now();
+    const next = {};
+    for (const [id, pack] of Object.entries(parsed || {})) {
+      if (!pack || !pack.savedAt || now - pack.savedAt > DETAIL_CACHE_TTL_MS) continue;
+      if (pack.data && pack.data.id_envio) next[id] = pack.data;
+    }
+    detailCache = next;
+  } catch(e) {
+    detailCache = {};
+  }
+}
+
+function saveDetailCache() {
+  try {
+    const entries = Object.entries(detailCache || {})
+      .filter(([,data]) => data && data.id_envio && data.itens && Object.keys(data.itens || {}).length)
+      .sort((a,b) => String(b[1].atualizado_em || b[1].itens_atualizados_em || "").localeCompare(String(a[1].atualizado_em || a[1].itens_atualizados_em || "")))
+      .slice(0, DETAIL_CACHE_MAX);
+
+    const payload = {};
+    for (const [id, data] of entries) {
+      payload[id] = { savedAt: Date.now(), data };
+    }
+    localStorage.setItem(DETAIL_CACHE_KEY, JSON.stringify(payload));
+  } catch(e) {}
+}
+
+function clearDetailCache() {
+  detailCache = {};
+  localStorage.removeItem(DETAIL_CACHE_KEY);
+  rebuildFlat();
+  renderActive();
+  toast("Cache local dos itens limpo");
+}
+
 function dataSignature(obj) {
   try {
     const values = Object.values(obj || {});
-    return JSON.stringify({
-      total: values.length,
-      itens: values.reduce((acc,e) => acc + Object.keys(e.itens || {}).length, 0),
-      updated: values.map(e => [e.id_envio, e.atualizado_em, e.hora_operacao, e.itens_atualizados_em, e.operador_ultima_alteracao, e.meu_status, e.motorista, e.caminhao_placa]).slice(0, 2000)
-    });
+    let itens = 0;
+    let latest = "";
+    for (const e of values) {
+      itens += Object.keys(e.itens || {}).length;
+      const candidates = [
+        e.atualizado_em,
+        e.hora_operacao,
+        e.itens_atualizados_em,
+        e.ultima_sincronizacao,
+        e.operador_ultima_alteracao,
+        e.meu_status,
+        e.motorista,
+        e.caminhao_placa
+      ].filter(Boolean).join("|");
+      if (candidates > latest) latest = candidates;
+    }
+    return `${values.length}|${itens}|${latest}`;
   } catch(e) {
     return String(Date.now());
   }
@@ -182,7 +243,11 @@ async function autoSyncItems() {
   if (!shouldRunAutoSyncLock()) return;
   try {
     setAutoSyncStatus("run", "Verificando itens pendentes");
-    await api("/sync-items?limit=30");
+    try {
+      await api("/sync-items?limit=30");
+    } catch (e) {
+      await api("/sync-items-all?limit=30");
+    }
     setAutoSyncStatus("ok", "Rodada automática concluída");
     await loadData(true);
   } catch(e) {
@@ -229,11 +294,64 @@ function saveOperator() {
 
 function classifyStatus(e) {
   const s = norm([e.status, e.status_detail, e.categoria_operacional, e.meu_status].join(" "));
-  if (s.includes("cancel") || s.includes("cancelado") || s.includes("canceled")) return "cancelado";
-  if (s.includes("final") || s.includes("finished") || s.includes("concluido") || s.includes("concluído") || s.includes("closed")) return "finalizado";
-  if (e.categoria_operacional === "ignorado" || s.includes("expired") || s.includes("vencido")) return "ignorado";
-  if (e.categoria_operacional === "agendado" || e.tem_data_reservada || e.data_reservada) return "agendado";
+  const rawStatus = norm(e.status || "");
+  const rawDetail = norm(e.status_detail || "");
+
+  // Separação principal conforme status do Mercado Livre.
+  // Agendado aqui significa "está para enviar/receber no Full", não apenas ter uma data.
+  if (
+    rawStatus.includes("refused") ||
+    rawDetail.includes("refused") ||
+    s.includes("recusado")
+  ) return "recusado";
+
+  if (
+    rawStatus.includes("cancel") ||
+    rawDetail.includes("cancel") ||
+    s.includes("cancelado") ||
+    s.includes("canceled")
+  ) return "cancelado";
+
+  if (
+    rawStatus.includes("finish") ||
+    rawStatus.includes("closed") ||
+    rawStatus.includes("done") ||
+    rawDetail.includes("finish") ||
+    rawDetail.includes("closed") ||
+    s.includes("finalizado") ||
+    s.includes("concluido") ||
+    s.includes("concluído")
+  ) return "finalizado";
+
+  if (
+    rawStatus.includes("problem") ||
+    rawDetail.includes("problem") ||
+    rawStatus.includes("processed_with_problems") ||
+    rawDetail.includes("processed_with_problems") ||
+    s.includes("problema")
+  ) return "problema";
+
+  if (
+    e.categoria_operacional === "ignorado" ||
+    rawStatus.includes("expired") ||
+    rawDetail.includes("expired") ||
+    s.includes("vencido")
+  ) return "ignorado";
+
   if (e.categoria_operacional === "reservar_data") return "reservar_data";
+
+  // Status ativo/operacional do ML, ou envio com data válida e sem problema/finalização.
+  if (
+    e.tem_data_reservada ||
+    e.data_reservada ||
+    e.categoria_operacional === "agendado" ||
+    rawStatus.includes("received") ||
+    rawStatus.includes("receiving") ||
+    rawStatus.includes("scheduled") ||
+    rawStatus.includes("in_transit") ||
+    rawStatus.includes("inbound")
+  ) return "agendado";
+
   return "pendente";
 }
 
@@ -243,9 +361,24 @@ function statusLabel(st) {
     reservar_data:"Reservar data",
     finalizado:"Finalizado",
     cancelado:"Cancelado",
+    recusado:"Recusado",
+    problema:"Com problema",
     ignorado:"Ignorado",
     pendente:"Pendente"
   }[st] || st;
+}
+
+function statusBadgeClass(st) {
+  return {
+    recusado: "refused",
+    problema: "problem",
+    finalizado: "finished",
+    cancelado: "cancelled",
+    ignorado: "cancelled",
+    agendado: "info",
+    reservar_data: "warn",
+    pendente: "warn"
+  }[st] || "info";
 }
 
 function envioDateKey(e) {
@@ -266,35 +399,174 @@ function shipmentPlatformDate(e) {
   return e.data_reservada || e.data_referencia || e.data || e.data_criacao_ml || "";
 }
 
+function mergeEnvioLocal(payload) {
+  if (!payload || !payload.id_envio) return null;
+  const id = String(payload.id_envio);
+  const current = base[id] || {};
+  const merged = { ...current, ...payload };
+  if (current.itens && !payload.itens) merged.itens = current.itens;
+  base[id] = merged;
+  if (merged.itens && Object.keys(merged.itens).length) {
+    detailCache[id] = merged;
+    saveDetailCache();
+  }
+  return merged;
+}
+
+function getEnvioById(id) {
+  return base[String(id)] || null;
+}
+
+function getCachedDetail(id) {
+  return detailCache[String(id)] || null;
+}
+
+function hasDetailedItems(e) {
+  const detail = getCachedDetail(e.id_envio) || e;
+  return !!(detail && detail.itens && Object.keys(detail.itens || {}).length);
+}
+
+function getItemCount(e) {
+  const detail = getCachedDetail(e.id_envio) || e || {};
+  return Object.keys(detail.itens || {}).length || Number(detail.itens_qtd || e?.itens_qtd || 0) || 0;
+}
+
+async function ensureEnvioDetail(id, options = {}) {
+  const key = String(id);
+  if (!key) return null;
+  const cached = getCachedDetail(key);
+  if (cached && !options.force) return cached;
+  if (loadingDetails.has(key)) return null;
+
+  loadingDetails.add(key);
+  try {
+    if (!options.silent) renderActive();
+    const detail = await api(`/historico_envios/${encodeURIComponent(key)}.json`);
+    if (detail && detail.id_envio) {
+      const merged = mergeEnvioLocal(detail);
+      rebuildFlat();
+      renderActive();
+      return merged;
+    }
+    return detail;
+  } catch (e) {
+    if (!options.silent) toast(`Erro ao carregar detalhes do envio ${key}: ${e.message}`);
+    return null;
+  } finally {
+    loadingDetails.delete(key);
+    if (!options.silent) renderActive();
+  }
+}
+
+async function prefetchAgendadosVisiveis() {
+  clearTimeout(prefetchTimer);
+  prefetchTimer = setTimeout(async () => {
+    try {
+      const targets = filteredEnvios().filter(e => classifyStatus(e) === 'agendado').slice(0, 8);
+      for (const e of targets) {
+        if (!getCachedDetail(e.id_envio) && !loadingDetails.has(String(e.id_envio))) {
+          await ensureEnvioDetail(e.id_envio, { silent: true });
+          await new Promise(r => setTimeout(r, 120));
+        }
+      }
+    } catch (e) {}
+  }, 250);
+}
+
 function getItens(e) {
-  return Object.entries(e.itens || {}).map(([sku,item]) => [sku, item || {}]);
+  const detail = getCachedDetail(e?.id_envio) || e || {};
+  return Object.entries(detail.itens || {}).map(([sku,item]) => [sku, item || {}]);
 }
 
 function envioProcess(e) {
   const items = getItens(e);
-  let declarado = 0, feita = 0, pendentes = 0, feitos = 0, parciais = 0, naoTem = 0;
-  for (const [,it] of items) {
-    const dec = Number(it.declarado || 0);
-    const qf = Number(it.qtd_feita || 0);
-    declarado += dec;
-    feita += qf;
-    const st = norm(it.status_controle || "");
-    if (st.includes("parcial")) parciais++;
-    else if (st.includes("nao tem") || st.includes("não tem")) naoTem++;
-    else if (st.includes("feito") && !st.includes("nao") && !st.includes("não")) feitos++;
-    else pendentes++;
+  const itemCount = getItemCount(e);
+  const detailLoaded = hasDetailedItems(e);
+  const isLoading = loadingDetails.has(String(e.id_envio));
+
+  if (items.length) {
+    let declarado = 0, feita = 0, pendentes = 0, feitos = 0, parciais = 0, naoTem = 0;
+    for (const [,it] of items) {
+      const dec = Number(it.declarado || 0);
+      const qf = Number(it.qtd_feita || 0);
+      declarado += dec;
+      feita += qf;
+      const st = norm(it.status_controle || "");
+      if (st.includes("parcial")) parciais++;
+      else if (st.includes("nao tem") || st.includes("não tem")) naoTem++;
+      else if (st.includes("feito") && !st.includes("nao") && !st.includes("não")) feitos++;
+      else pendentes++;
+    }
+    const percent = declarado > 0 ? Math.min(100, (feita / declarado) * 100) : 0;
+    return { totalItems: items.length, declarado, feita, falta: Math.max(0, declarado - feita), percent, pendentes, feitos, parciais, naoTem, fromSummary:false };
   }
-  const percent = declarado > 0 ? Math.min(100, (feita / declarado) * 100) : 0;
-  return { totalItems: items.length || Number(e.itens_qtd || 0) || 0, declarado, feita, falta: Math.max(0, declarado - feita), percent, pendentes, feitos, parciais, naoTem };
+
+  const totalItems = Number(e.itens_qtd || 0) || 0;
+  const feitos = Number(e.itens_feitos || 0) || 0;
+  const parciais = Number(e.itens_parciais || 0) || 0;
+  const pendentes = Number(e.itens_pendentes || Math.max(0, totalItems - feitos - parciais)) || 0;
+  const declared = Number(e.unidades_declaradas || 0) || 0;
+  const feita = 0;
+  const percent = totalItems > 0 ? Math.min(100, ((feitos + (parciais * 0.5)) / totalItems) * 100) : 0;
+  return { totalItems, declarado: declared, feita, falta: Math.max(0, totalItems - feitos), percent, pendentes, feitos, parciais, naoTem:0, fromSummary:true };
+}
+
+function isDivergente(e) {
+  const p = envioProcess(e);
+  const declared = Number(e.unidades_declaradas || p.declarado || 0);
+  const received = Number(e.unidades_recebidas || 0);
+
+  if (e.itens_ultimo_erro?.mensagem) return true;
+
+  const s = norm([e.status, e.status_detail, e.categoria_operacional].join(" "));
+  if (s.includes("problem") || s.includes("problema") || s.includes("refused") || s.includes("recusado")) return true;
+
+  for (const [,it] of getItens(e)) {
+    const st = norm(it.status_controle || "");
+    const falta = Number(it.qtd_faltante || 0);
+    const diverg = norm(it.divergencia || it.observacao_item || "");
+    if (st.includes("nao tem") || st.includes("não tem") || diverg.includes("diverg")) return true;
+    if (falta > 0 && (st.includes("parcial") || st.includes("feito"))) return true;
+  }
+
+  if (received && declared && received !== declared) return true;
+
+  return false;
+}
+
+
+function envioVisualClasses(e) {
+  const classes = [];
+  const status = classifyStatus(e);
+  if (status) classes.push(`status-${status}`);
+  if (isDivergente(e)) classes.push("card-divergente");
+  if (e.itens_ultimo_erro?.mensagem) classes.push("card-error-items");
+  else if (!getItemCount(e)) classes.push("card-no-items");
+  else if (hasDetailedItems(e)) classes.push("card-loaded-items");
+  else classes.push("card-summary-items");
+  if (loadingDetails.has(String(e.id_envio))) classes.push("card-loading-items");
+  return classes.join(" ");
+}
+
+function envioAttentionText(e) {
+  if (e.itens_ultimo_erro?.mensagem) return "Erro ao puxar itens";
+  if (isDivergente(e)) return "Divergente";
+  if (!getItemCount(e)) return "Sem itens";
+  if (loadingDetails.has(String(e.id_envio))) return "Carregando itens";
+  if (hasDetailedItems(e)) return "Itens no cache";
+  return "Resumo da planilha";
 }
 
 function itemBadge(e) {
   const p = envioProcess(e);
+  const totalItems = getItemCount(e);
+  if (loadingDetails.has(String(e.id_envio))) return { cls:"info", text:"Carregando itens" };
   if (e.itens_ultimo_erro?.mensagem) return { cls:"err", text:"Erro itens" };
-  if (!p.totalItems) return { cls:"warn", text:"Sem itens" };
-  if (p.percent >= 100) return { cls:"ok", text:"100% feito" };
-  if (p.percent > 0) return { cls:"info", text:pct(p.percent) };
+  if (!totalItems) return { cls:"warn", text:"Sem itens" };
+  if (hasDetailedItems(e) && p.percent >= 100) return { cls:"ok", text:"100% feito" };
+  if (hasDetailedItems(e) && p.percent > 0) return { cls:"info", text:pct(p.percent) };
   if (e.itens_precisa_atualizar) return { cls:"warn", text:"Na fila" };
+  if (totalItems && !hasDetailedItems(e)) return { cls:"info", text:`${totalItems} itens` };
   return { cls:"warn", text:"0% feito" };
 }
 
@@ -302,8 +574,9 @@ function rebuildFlat() {
   envios = Object.values(base || {}).filter(e => e && e.id_envio);
   itensFlat = [];
   for (const e of envios) {
-    for (const [sku, item] of getItens(e)) {
-      itensFlat.push({ envio:e, sku, item });
+    const detail = getCachedDetail(e.id_envio) || e;
+    for (const [sku, item] of Object.entries(detail.itens || {})) {
+      itensFlat.push({ envio: base[String(e.id_envio)] || e, sku, item });
     }
   }
 }
@@ -328,7 +601,8 @@ function envioMatches(e, f) {
   if (f.status !== "todos") {
     if (f.status === "sem_itens" && proc.totalItems > 0) return false;
     else if (f.status === "erro_itens" && !e.itens_ultimo_erro?.mensagem) return false;
-    else if (!["sem_itens","erro_itens"].includes(f.status) && st !== f.status) return false;
+    else if (f.status === "divergente" && !isDivergente(e)) return false;
+    else if (!["sem_itens","erro_itens","divergente"].includes(f.status) && st !== f.status) return false;
   }
 
   if (f.itemProcess === "100" && !(proc.totalItems && proc.percent >= 100)) return false;
@@ -382,7 +656,19 @@ async function loadData(silent = false) {
       $("statusText").textContent = "Carregando";
       $("statusDot").className = "dot";
     }
-    const nextBase = await api("/historico_envios.json");
+    // v17: não chama mais /api/mobile/envios.
+    // Seu backend atual ainda responde 404 nessa rota; por isso o console ficava poluído.
+    // O painel volta a usar diretamente o endpoint que já funciona.
+    let nextBase = await api("/historico_envios.json");
+    nextBase = nextBase || {};
+
+    // Mantém na tela os itens/detalhes já carregados no navegador para não reabrir lento.
+    for (const [id, current] of Object.entries(base || {})) {
+      if (current?.itens && nextBase[id] && !nextBase[id].itens) nextBase[id].itens = current.itens;
+    }
+    for (const [id, cached] of Object.entries(detailCache || {})) {
+      if (cached?.itens && nextBase[id] && !nextBase[id].itens) nextBase[id].itens = cached.itens;
+    }
     const nextSig = dataSignature(nextBase);
     if (nextSig !== lastDataSignature) {
       base = nextBase || {};
@@ -390,6 +676,7 @@ async function loadData(silent = false) {
       rebuildFlat();
       populateContas();
       renderAll();
+      if (view === 'envios') prefetchAgendadosVisiveis();
     }
     $("statusText").textContent = "Online";
     $("statusDot").className = "dot ok";
@@ -419,13 +706,28 @@ function setView(next) {
   };
   $("pageTitle").textContent = labels[next][0];
   $("pageSubtitle").textContent = labels[next][1];
+  renderActive();
+  if (next === "envios") prefetchAgendadosVisiveis();
 }
 
 function renderAll() {
-  renderResumo();
-  renderEnvios();
-  renderItens();
-  renderMotoristas();
+  renderActive();
+  if (next === "envios") prefetchAgendadosVisiveis();
+}
+
+function renderActive() {
+  if (view === "resumo") renderResumo();
+  else if (view === "envios") renderEnvios();
+  else if (view === "itens") renderItens();
+  else if (view === "motoristas") renderMotoristas();
+  else if (view === "sync") {
+    // não precisa renderizar tabelas na tela de sync
+  }
+}
+
+function resetRenderLimits() {
+  enviosRenderLimit = 80;
+  itensRenderLimit = 400;
 }
 
 function renderResumo() {
@@ -537,7 +839,7 @@ function renderLineChart(el, data) {
 }
 
 function renderStatusChart(list) {
-  const labels = {agendado:"Agendados",reservar_data:"Reservar data",finalizado:"Finalizados",cancelado:"Cancelados",ignorado:"Ignorados",pendente:"Pendentes"};
+  const labels = {agendado:"Agendados",reservar_data:"Reservar data",finalizado:"Finalizados",cancelado:"Cancelados",recusado:"Recusados",problema:"Com problema",ignorado:"Ignorados",pendente:"Pendentes"};
   renderDonutChart($("chartStatus"), groupCount(list, e => labels[classifyStatus(e)] || "Outro"));
 }
 
@@ -603,9 +905,23 @@ function priorityCard(e) {
 }
 
 function renderEnvios() {
-  const list = filteredEnvios().sort((a,b) => String(envioDateKey(a)).localeCompare(String(envioDateKey(b))) || String(a.conta).localeCompare(String(b.conta)));
-  $("enviosCount").textContent = `${list.length} envios`;
-  $("enviosList").innerHTML = list.map(e => envioCard(e)).join("") || `<div class="subline">Nenhum envio localizado.</div>`;
+  const all = filteredEnvios().sort((a,b) => {
+    const order = { agendado: 0, divergente: 1, reservar_data: 2, pendente: 3, problema: 4, recusado: 5, cancelado: 6, finalizado: 7, ignorado: 8 };
+    const sa = isDivergente(a) && classifyStatus(a) === "agendado" ? "divergente" : classifyStatus(a);
+    const sb = isDivergente(b) && classifyStatus(b) === "agendado" ? "divergente" : classifyStatus(b);
+    const oa = order[sa] ?? 99;
+    const ob = order[sb] ?? 99;
+    if (oa !== ob) return oa - ob;
+    return String(envioDateKey(a)).localeCompare(String(envioDateKey(b))) || String(a.conta).localeCompare(String(b.conta));
+  });
+  const list = all.slice(0, enviosRenderLimit);
+  $("enviosCount").textContent = `${all.length} envios`;
+  const more = all.length > list.length ? `
+    <div class="load-more-wrap">
+      <button class="mini-btn dark" onclick="enviosRenderLimit += 80; renderEnvios();">Mostrar mais ${Math.min(80, all.length - list.length)} de ${all.length - list.length} restantes</button>
+    </div>` : `<div class="load-more-wrap"><span class="perf-note">Renderização otimizada: ${list.length} envios exibidos</span></div>`;
+  $("enviosList").innerHTML = (list.map(e => envioCard(e)).join("") || `<div class="subline">Nenhum envio localizado.</div>`) + more;
+  prefetchAgendadosVisiveis();
 }
 
 function envioCard(e) {
@@ -613,23 +929,27 @@ function envioCard(e) {
   const badge = itemBadge(e);
   const status = classifyStatus(e);
   const items = getItens(e);
+  const itemCount = getItemCount(e);
+  const detailLoaded = hasDetailedItems(e);
+  const isLoading = loadingDetails.has(String(e.id_envio));
   const showOperacao = String(openOperacaoId) === String(e.id_envio);
   const showItems = String(openItemsId) === String(e.id_envio);
   const plataforma = shipmentPlatformDate(e);
   const dataPrevista = e.data_prevista_pronto || e.data_limite_pronto || "";
   const horaPrevista = e.hora_prevista_pronto || e.hora_limite_pronto || "";
 
-  return `<article class="envio-card" id="envio-${html(e.id_envio)}">
+  return `<article class="envio-card ${envioVisualClasses(e)}" id="envio-${html(e.id_envio)}">
+    <div class="card-alert-strip">${envioAttentionText(e)}</div>
     <div class="envio-head">
       <div class="card-click-zone" onclick="toggleOperacao('${html(e.id_envio)}')">
         <div class="title-line">
           <strong>#${html(e.id_envio)}</strong>
           <span class="badge dark">${html(e.conta || "")}</span>
-          <span class="badge info">${statusLabel(status)}</span>
+          <span class="badge ${statusBadgeClass(status)}">${statusLabel(status)}</span>
           <span class="badge ${badge.cls}">${badge.text}</span>
-          ${e.dificuldade ? `<span class="badge ${dificuldadeBadgeClass(e.dificuldade)}">${html(e.dificuldade)}</span>` : ""}
+          ${isDivergente(e) ? `<span class="badge divergente">Divergente</span>` : ""}${e.dificuldade ? `<span class="badge ${dificuldadeBadgeClass(e.dificuldade)}">${html(e.dificuldade)}</span>` : ""}
         </div>
-        <div class="subline">${html(e.status || "")} ${e.status_detail ? "• " + html(e.status_detail) : ""}</div>
+        <div class="subline">Status ML: ${html(e.status || "—")} ${e.status_detail ? "• " + html(e.status_detail) : ""}</div>
       </div>
       <div class="envio-actions">
         <button class="mini-btn" onclick="patchEnvio('${html(e.id_envio)}', {meu_status:'Em separação'})">Em separação</button>
@@ -643,30 +963,30 @@ function envioCard(e) {
       <div class="meta-box"><span>Data plataforma</span><strong>${formatDate(plataforma)}</strong></div>
       <div class="meta-box"><span>Hora plataforma</span><strong>${formatTime(plataforma)}</strong></div>
       <div class="meta-box"><span>Galpão</span><strong>${html(e.galpao || "—")}</strong></div>
-      <div class="meta-box"><span>Declarado</span><strong>${proc.declarado || e.unidades_declaradas || "—"}</strong></div>
-      <div class="meta-box"><span>Feito</span><strong>${proc.feita || 0} / ${proc.declarado || 0}</strong></div>
+      <div class="meta-box"><span>Declarado</span><strong>${e.unidades_declaradas || proc.declarado || "—"}</strong></div>
+      <div class="meta-box"><span>${detailLoaded ? "Feito" : "Itens da planilha"}</span><strong>${detailLoaded ? `${proc.feita || 0} / ${proc.declarado || 0}` : `${Number(e.itens_feitos || 0)} feitos • ${itemCount} itens`}</strong></div>
       <div class="meta-box"><span>Motorista</span><strong>${html(e.motorista || "sem motorista")}</strong></div>
     </div>
 
     <div style="margin-top:12px">
       <div class="progress"><span style="width:${Math.round(proc.percent)}%"></span></div>
-      <div class="subline">${pct(proc.percent)} do processo dos itens • falta ${proc.falta}</div>
+            <div class="subline">${detailLoaded ? `${pct(proc.percent)} do processo dos itens • falta ${proc.falta}` : isLoading ? `Carregando itens do envio #${html(e.id_envio)}...` : `Resumo rápido: ${itemCount} itens na planilha • ${Number(e.itens_feitos || 0)} feitos • clique em Ver itens para carregar pelo ID do envio`}</div>
     </div>
 
     <div class="inline-actions-row">
       <div class="left-actions">
         <button class="mini-btn" onclick="toggleOperacao('${html(e.id_envio)}')">${showOperacao ? "Ocultar operação" : "Abrir operação"}</button>
-        <button class="mini-btn" onclick="toggleItems('${html(e.id_envio)}')">${showItems ? "Ocultar itens" : `Itens (${items.length})`}</button>
+        <button class="mini-btn" onclick="toggleItems('${html(e.id_envio)}')">${showItems ? "Ocultar itens" : `Itens (${itemCount})`}</button>
       </div>
       <div class="right-actions">
-        <span id="save-state-${html(e.id_envio)}" class="quick-save-state saved">${e.atualizado_em ? "salvo" : ""}</span>
+        <span id="save-state-${html(e.id_envio)}" class="quick-save-state saved">${hasDetailedItems(e) ? "cache local" : (e.atualizado_em ? "salvo" : "")}</span>
       </div>
     </div>
 
     <div class="operation-panel ${showOperacao ? "" : "is-hidden"}">
       <div class="operation-title">
         <strong>Operação, transporte e previsão de pronto</strong>
-        <small>Esse bloco só aparece quando você abre o envio.</small>
+        <small>Esse bloco só aparece no envio aberto e salva com atualização instantânea.</small>
       </div>
 
       <div class="operation-grid">
@@ -725,10 +1045,10 @@ function envioCard(e) {
     <div class="items-inline ${showItems ? "" : "is-hidden"}">
       <button class="items-toggle" onclick="toggleItems('${html(e.id_envio)}')">
         <span>Itens do envio na mesma página</span>
-        <span class="pill">${items.length} itens • ${pct(proc.percent)}</span>
+        <span class="pill">${itemCount} itens • ${pct(proc.percent)}</span>
       </button>
       <div id="items-${html(e.id_envio)}" class="items-panel open">
-        ${items.length ? items.slice(0,160).map(([sku,it]) => itemRow(e.id_envio, sku, it)).join("") : `<div class="subline">Sem itens carregados ainda. Rode "Puxar itens".</div>`}
+        ${isLoading ? `<div class="subline">Carregando itens do envio #${html(e.id_envio)} diretamente do histórico da planilha...</div>` : items.length ? items.slice(0,160).map(([sku,it]) => itemRow(e.id_envio, sku, it)).join("") : itemCount ? `<div class="subline">Os itens já existem na planilha, mas ainda não foram abertos nesse navegador. Clique em "Ver itens" para carregar pelo ID do envio.</div>` : `<div class="subline">Sem itens carregados ainda. O sincronizador em segundo plano vai preencher quando houver dados.</div>`}
       </div>
     </div>
   </article>`;
@@ -752,26 +1072,32 @@ function itemRow(id, sku, it) {
   </div>`;
 }
 
-function toggleOperacao(id) {
-  openOperacaoId = String(openOperacaoId) === String(id) ? null : String(id);
+async function toggleOperacao(id) {
+  const opening = String(openOperacaoId) !== String(id);
+  openOperacaoId = opening ? String(id) : null;
   renderEnvios();
   renderMotoristas();
   setTimeout(() => document.getElementById(`envio-${id}`)?.scrollIntoView({behavior:"smooth", block:"nearest"}), 40);
+  if (opening) await ensureEnvioDetail(id, { silent: false });
 }
 
-function toggleItems(id) {
-  openItemsId = String(openItemsId) === String(id) ? null : String(id);
+async function toggleItems(id) {
+  const opening = String(openItemsId) !== String(id);
+  openItemsId = opening ? String(id) : null;
   renderEnvios();
   renderMotoristas();
   setTimeout(() => document.getElementById(`envio-${id}`)?.scrollIntoView({behavior:"smooth", block:"nearest"}), 40);
+  if (opening) await ensureEnvioDetail(id, { silent: false });
 }
 
-function focusEnvio(id) {
+async function focusEnvio(id) {
   setView("envios");
   openOperacaoId = String(id);
   openItemsId = null;
   renderEnvios();
   setTimeout(() => document.getElementById(`envio-${id}`)?.scrollIntoView({behavior:"smooth", block:"start"}), 80);
+  await ensureEnvioDetail(id, { silent: true });
+  renderEnvios();
 }
 
 function applyCurrentOperatorToEnvio(id) {
@@ -780,9 +1106,19 @@ function applyCurrentOperatorToEnvio(id) {
 }
 
 function renderItens() {
-  const list = filteredItens().slice(0, 2000);
-  $("itensCount").textContent = `${list.length} itens`;
-  $("itensList").innerHTML = `<table class="items-table">
+  const all = filteredItens().sort((a,b) => {
+    const order = { agendado: 0, divergente: 1, reservar_data: 2, pendente: 3, problema: 4, recusado: 5, cancelado: 6, finalizado: 7, ignorado: 8 };
+    const sa = isDivergente(a.envio) && classifyStatus(a.envio) === "agendado" ? "divergente" : classifyStatus(a.envio);
+    const sb = isDivergente(b.envio) && classifyStatus(b.envio) === "agendado" ? "divergente" : classifyStatus(b.envio);
+    const oa = order[sa] ?? 99;
+    const ob = order[sb] ?? 99;
+    if (oa !== ob) return oa - ob;
+    return String(envioDateKey(a.envio)).localeCompare(String(envioDateKey(b.envio))) || String(a.sku).localeCompare(String(b.sku));
+  });
+  const list = all.slice(0, itensRenderLimit);
+  $("itensCount").textContent = `${all.length} itens`;
+  const emptyHint = !all.length ? `<div class="subline">Nenhum item carregado ainda para o filtro atual. Abra um envio em "Envios Full" para carregar seus itens pelo ID, ou aguarde a pré-carga em segundo plano.</div>` : "";
+  const table = emptyHint || `<table class="items-table">
     <thead><tr><th>Envio</th><th>Conta</th><th>SKU</th><th>Produto</th><th>Qtd</th><th>Status</th><th>Operador</th><th>Obs</th></tr></thead>
     <tbody>${list.map(x => `<tr>
       <td><strong>#${html(x.envio.id_envio)}</strong><div class="subline">${formatDateTime(shipmentPlatformDate(x.envio))}</div></td>
@@ -795,6 +1131,11 @@ function renderItens() {
       <td>${html(x.item.observacao_item || "")}</td>
     </tr>`).join("")}</tbody>
   </table>`;
+  const more = all.length > list.length ? `
+    <div class="load-more-wrap">
+      <button class="mini-btn dark" onclick="itensRenderLimit += 400; renderItens();">Mostrar mais ${Math.min(400, all.length - list.length)} de ${all.length - list.length} restantes</button>
+    </div>` : `<div class="load-more-wrap"><span class="perf-note">Renderização otimizada: ${list.length} itens exibidos</span></div>`;
+  $("itensList").innerHTML = table + more;
 }
 
 function monthlyDriverRows(month, field) {
@@ -828,7 +1169,8 @@ function renderMotoristas() {
 
   const monthEnvios = envios.filter(e => !f.month || envioMonthKey(e) === f.month).filter(e => envioMatches(e, {...f, date:""}));
   $("transporteEnviosCount").textContent = `${monthEnvios.length} envios`;
-  $("transporteEnvios").innerHTML = monthEnvios.map(e => envioCard(e)).join("") || `<div class="subline">Nenhum envio no mês.</div>`;
+  const show = monthEnvios.slice(0, 80);
+  $("transporteEnvios").innerHTML = show.map(e => envioCard(e)).join("") + (monthEnvios.length > show.length ? `<div class="load-more-wrap"><span class="perf-note">Mostrando 80 de ${monthEnvios.length}. Use busca/filtros para reduzir.</span></div>` : "") || `<div class="subline">Nenhum envio no mês.</div>`;
 }
 
 function driverCard(r) {
@@ -984,6 +1326,25 @@ async function patchItem(id, skuEnc, patch) {
   }
 }
 
+
+async function runSyncItems(limit, label) {
+  $("syncLog").textContent = label + "...\n";
+  try {
+    let json;
+    try {
+      json = await api(`/sync-items?limit=${limit}`);
+    } catch (e) {
+      json = await api(`/sync-items-all?limit=${limit}`);
+    }
+    $("syncLog").textContent += JSON.stringify(json, null, 2);
+    toast("Sincronização de itens finalizada");
+    await loadData();
+  } catch(e) {
+    $("syncLog").textContent += "\nERRO: " + e.message;
+    toast("Erro na sincronização de itens");
+  }
+}
+
 async function runSync(path, label) {
   $("syncLog").textContent = label + "...\n";
   try {
@@ -1000,7 +1361,9 @@ async function runSync(path, label) {
 function applyQuick(value) {
   $("filterStatus").value = value;
   document.querySelectorAll(".quick").forEach(b => b.classList.toggle("active", b.dataset.quick === value));
-  renderAll();
+  resetRenderLimits();
+  renderActive();
+  if (next === "envios") prefetchAgendadosVisiveis();
 }
 
 function bind() {
@@ -1016,24 +1379,29 @@ function bind() {
   document.querySelectorAll(".nav-btn,.mobile-tab").forEach(btn => btn.addEventListener("click", () => setView(btn.dataset.view)));
   ["searchInput","filterConta","filterStatus","filterItemProcess","filterDate","filterMonth"].forEach(id => $(id).addEventListener("input", () => {
     if (id === "filterStatus") document.querySelectorAll(".quick").forEach(b => b.classList.toggle("active", b.dataset.quick === $("filterStatus").value));
-    renderAll();
+    resetRenderLimits();
+    renderActive();
   }));
   document.querySelectorAll(".quick").forEach(btn => btn.addEventListener("click", () => applyQuick(btn.dataset.quick)));
-  $("btnToday").addEventListener("click", () => { $("filterDate").value = toDateInputValue(); renderAll(); });
-  $("btnClearDate").addEventListener("click", () => { $("filterDate").value = ""; renderAll(); });
+  $("btnToday").addEventListener("click", () => { $("filterDate").value = toDateInputValue(); resetRenderLimits(); renderActive(); });
+  $("btnClearDate").addEventListener("click", () => { $("filterDate").value = ""; resetRenderLimits(); renderActive(); });
   $("btnRefresh").addEventListener("click", loadData);
 
   // Usa rota existente no backend atual. Isso remove o erro 404 de /sync-items-all.
   $("btnSyncEnviosTop").addEventListener("click", () => runSync("/sync-envios", "Puxando envios"));
-  $("btnSyncItensTop").addEventListener("click", () => runSync("/sync-items?limit=80", "Puxando itens"));
+  $("btnSyncItensTop").addEventListener("click", () => runSyncItems(80, "Puxando itens"));
   $("btnSyncEnvios").addEventListener("click", () => runSync("/sync-envios", "Puxando envios"));
-  $("btnSyncItens30").addEventListener("click", () => runSync("/sync-items?limit=30", "Puxando 30 itens"));
-  $("btnSyncItens80").addEventListener("click", () => runSync("/sync-items?limit=80", "Puxando 80 itens"));
+  $("btnSyncItens30").addEventListener("click", () => runSyncItems(30, "Puxando 30 itens"));
+  $("btnSyncItens80").addEventListener("click", () => runSyncItems(80, "Puxando 80 itens"));
   $("btnRebuildViews").addEventListener("click", () => runSync("/rebuild-views", "Reorganizando abas"));
+  const clearCacheBtn = $("btnClearCache");
+  if (clearCacheBtn) clearCacheBtn.addEventListener("click", clearDetailCache);
 }
 
 document.addEventListener("DOMContentLoaded", () => {
   $("filterMonth").value = currentMonthValue();
+  loadDetailCache();
+  rebuildFlat();
   $("currentOperator").textContent = currentOperator || "—";
   bind();
   ensureOperator();

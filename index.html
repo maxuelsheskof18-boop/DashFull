@@ -108,6 +108,7 @@
             <option value="cancelado">Cancelados</option>
             <option value="ignorado">Ignorados</option>
             <option value="pendente">Pendentes</option>
+            <option value="divergente">Divergentes</option>
             <option value="erro_itens">Erro nos itens</option>
             <option value="sem_itens">Sem itens</option>
           </select>
@@ -150,7 +151,7 @@
 
         <div class="chart-grid">
           <article class="card chart-card">
-            <div class="card-head"><div><h2>Status dos envios</h2><p>Agendados, reservar data, cancelados, finalizados e ignorados.</p></div></div>
+            <div class="card-head"><div><h2>Status dos envios</h2><p>Agendados reais do Mercado Livre, recusados, problemas, cancelados e finalizados separados.</p></div></div>
             <div id="chartStatus" class="chart-area"></div>
           </article>
 
@@ -187,7 +188,7 @@
       <section id="view-envios" class="view">
         <div class="card">
           <div class="card-head">
-            <div><h2>Envios Full</h2><p>Os itens abrem abaixo do próprio envio. Apenas o envio clicado abre.</p></div>
+            <div><h2>Envios Full</h2><p>Agendados mostra somente o que está para enviar. Recusados, problemas, cancelados e finalizados ficam separados.</p></div>
             <span id="enviosCount" class="pill">0 envios</span>
           </div>
 
@@ -198,6 +199,7 @@
             <button data-quick="finalizado" class="quick">Finalizados</button>
             <button data-quick="cancelado" class="quick">Cancelados</button>
             <button data-quick="ignorado" class="quick">Ignorados</button>
+            <button data-quick="divergente" class="quick">Divergentes</button>
             <button data-quick="sem_itens" class="quick">Sem itens</button>
           </div>
 
@@ -253,6 +255,7 @@
               <button id="btnSyncItens30" class="btn dark">Puxar 30 itens</button>
               <button id="btnSyncItens80" class="btn dark">Puxar 80 itens</button>
               <button id="btnRebuildViews" class="btn ghost">Reorganizar abas</button>
+              <button id="btnClearCache" class="btn ghost">Limpar cache local</button>
             </div>
           </article>
 
@@ -270,6 +273,6 @@
   <script>
     window.DASHFULL_BACKEND = "https://atendente-dashfull-itens-worker.2cwhzy.easypanel.host";
   </script>
-  <script src="./script.js?v=11"></script>
+  <script src="./script.js?v=17"></script>
 </body>
 </html>
