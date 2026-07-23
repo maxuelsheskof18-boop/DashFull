@@ -434,23 +434,54 @@ function getItemCount(e) {
 async function ensureEnvioDetail(id, options = {}) {
   const key = String(id);
   if (!key) return null;
+
   const cached = getCachedDetail(key);
-  if (cached && !options.force) return cached;
+  if (cached && cached.itens && Object.keys(cached.itens || {}).length && !options.force) return cached;
+
   if (loadingDetails.has(key)) return null;
 
   loadingDetails.add(key);
   try {
     if (!options.silent) renderActive();
-    const detail = await api(`/historico_envios/${encodeURIComponent(key)}.json`);
+
+    // 1) Primeiro tenta o endpoint individual.
+    let detail = null;
+    try {
+      detail = await api(`/historico_envios/${encodeURIComponent(key)}.json`);
+    } catch (oneErr) {
+      detail = null;
+    }
+
+    // 2) Se o endpoint individual vier sem itens, busca o histórico completo
+    // e pega o envio pelo ID. Isso resolve quando a planilha já tem itens,
+    // mas a rota individual não está anexando os itens.
+    if (!detail || !detail.itens || !Object.keys(detail.itens || {}).length) {
+      try {
+        const full = await api("/historico_envios.json");
+        if (full && full[key]) {
+          const fromFull = full[key];
+          detail = { ...(detail || {}), ...fromFull };
+        }
+      } catch (fullErr) {}
+    }
+
     if (detail && detail.id_envio) {
       const merged = mergeEnvioLocal(detail);
+
+      if (!merged.itens || !Object.keys(merged.itens || {}).length) {
+        // Se mesmo assim não veio, mantém o resumo e mostra mensagem correta.
+        merged.itens_detalhe_status = "nao_retornado_pelo_backend";
+        base[key] = merged;
+      }
+
       rebuildFlat();
       renderActive();
       return merged;
     }
+
     return detail;
   } catch (e) {
-    if (!options.silent) toast(`Erro ao carregar detalhes do envio ${key}: ${e.message}`);
+    if (!options.silent) toast(`Erro ao carregar itens do envio ${key}: ${e.message}`);
     return null;
   } finally {
     loadingDetails.delete(key);
@@ -566,7 +597,7 @@ function itemBadge(e) {
   if (hasDetailedItems(e) && p.percent >= 100) return { cls:"ok", text:"100% feito" };
   if (hasDetailedItems(e) && p.percent > 0) return { cls:"info", text:pct(p.percent) };
   if (e.itens_precisa_atualizar) return { cls:"warn", text:"Na fila" };
-  if (totalItems && !hasDetailedItems(e)) return { cls:"info", text:`${totalItems} itens` };
+  if (totalItems && !hasDetailedItems(e)) return { cls:"info", text:`${totalItems} itens resumo` };
   return { cls:"warn", text:"0% feito" };
 }
 
@@ -712,7 +743,6 @@ function setView(next) {
 
 function renderAll() {
   renderActive();
-  if (next === "envios") prefetchAgendadosVisiveis();
 }
 
 function renderActive() {
@@ -1048,7 +1078,7 @@ function envioCard(e) {
         <span class="pill">${itemCount} itens • ${pct(proc.percent)}</span>
       </button>
       <div id="items-${html(e.id_envio)}" class="items-panel open">
-        ${isLoading ? `<div class="subline">Carregando itens do envio #${html(e.id_envio)} diretamente do histórico da planilha...</div>` : items.length ? items.slice(0,160).map(([sku,it]) => itemRow(e.id_envio, sku, it)).join("") : itemCount ? `<div class="subline">Os itens já existem na planilha, mas ainda não foram abertos nesse navegador. Clique em "Ver itens" para carregar pelo ID do envio.</div>` : `<div class="subline">Sem itens carregados ainda. O sincronizador em segundo plano vai preencher quando houver dados.</div>`}
+        ${isLoading ? `<div class="subline">Carregando itens do envio #${html(e.id_envio)} direto da planilha...</div>` : items.length ? items.slice(0,160).map(([sku,it]) => itemRow(e.id_envio, sku, it)).join("") : itemCount ? `<div class="subline">A planilha informa ${itemCount} itens, mas o backend ainda não devolveu a lista detalhada desse envio. Atualize também o backend v19 para liberar esses itens por ID.</div>` : `<div class="subline">Sem itens carregados ainda. O sincronizador em segundo plano vai preencher quando houver dados.</div>`}
       </div>
     </div>
   </article>`;
@@ -1363,7 +1393,6 @@ function applyQuick(value) {
   document.querySelectorAll(".quick").forEach(b => b.classList.toggle("active", b.dataset.quick === value));
   resetRenderLimits();
   renderActive();
-  if (next === "envios") prefetchAgendadosVisiveis();
 }
 
 function bind() {

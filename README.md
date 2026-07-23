@@ -45,3 +45,19 @@ Correção definitiva do erro 404 no console:
 - O painel usa diretamente /historico_envios.json, que é o endpoint que já funciona no seu backend atual.
 - Mantém cache local dos itens já abertos.
 - Mantém abertura por ID do envio quando clicar em Detalhes ou Ver itens.
+
+
+## v18
+Correções visuais e de console:
+- Corrige a linha verde esticada no card.
+- O indicador volta a ser apenas uma bolinha pequena.
+- Remove o erro `ReferenceError: next is not defined` ao clicar nos filtros.
+- Mantém cache, destaques e carregamento por envio.
+
+
+## v19
+Correção para itens já existentes na planilha demorando:
+- Ao clicar em Ver itens, o front tenta o envio individual.
+- Se a rota individual não devolver itens, busca /historico_envios.json e extrai aquele ID.
+- Mostra mensagem clara quando a planilha tem resumo de itens, mas o backend não devolve os itens detalhados.
+- Backend incluído ajustado para /historico_envios/:id.json devolver itens junto do envio.

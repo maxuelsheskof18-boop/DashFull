@@ -488,3 +488,65 @@
     width:max-content;
   }
 }
+
+
+/* v18: corrige a linha verde esticada */
+.envio-card .card-alert-strip{
+  width:10px!important;
+  min-width:10px!important;
+  max-width:10px!important;
+  height:10px!important;
+  min-height:10px!important;
+  max-height:10px!important;
+  padding:0!important;
+  border-radius:999px!important;
+  overflow:hidden!important;
+  text-indent:-9999px!important;
+  color:transparent!important;
+  top:auto!important;
+  right:14px!important;
+  bottom:14px!important;
+  display:block!important;
+}
+.envio-card.card-divergente .card-alert-strip,
+.envio-card.card-error-items .card-alert-strip{
+  width:10px!important;
+  min-width:10px!important;
+  max-width:10px!important;
+  height:10px!important;
+  min-height:10px!important;
+  max-height:10px!important;
+  padding:0!important;
+  top:auto!important;
+  right:14px!important;
+  bottom:14px!important;
+  color:transparent!important;
+  text-indent:-9999px!important;
+  box-shadow:0 0 0 5px rgba(245,158,11,.14)!important;
+}
+.envio-card.card-error-items .card-alert-strip{
+  box-shadow:0 0 0 5px rgba(239,68,68,.14)!important;
+}
+@media(max-width:680px){
+  .envio-card.card-divergente .card-alert-strip,
+  .envio-card.card-error-items .card-alert-strip{
+    position:absolute!important;
+    display:block!important;
+    margin:0!important;
+    width:10px!important;
+    height:10px!important;
+  }
+}
+
+
+/* v19: estado de itens detalhados direto da planilha */
+.envio-card.card-summary-items .badge.info{
+  background:#e0f2fe;
+  color:#075985;
+}
+.items-panel .subline{
+  background:#f8fafc;
+  border:1px dashed #cbd5e1;
+  border-radius:14px;
+  padding:12px;
+}
