@@ -1,224 +1,275 @@
-<!DOCTYPE html>
-<html lang="pt-BR" translate="no">
+<!doctype html>
+<html lang="pt-BR">
 <head>
-  <meta name="google" content="notranslate">
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>DashFull - Centro de Comando Multi-Contas</title>
-  
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <link rel="stylesheet" href="style.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#07111f" />
+  <title>DashFull — Sistema Único</title>
+  <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
+  <div id="operatorModal" class="operator-modal hidden">
+    <div class="operator-box">
+      <div class="operator-mark">DF</div>
+      <h2>Quem está operando agora?</h2>
+      <p>Esse nome será gravado em toda alteração: envio, item, dificuldade, data prevista, motorista e veículo.</p>
+      <input id="operatorInput" placeholder="Digite seu nome" autocomplete="name" />
+      <button id="operatorSave" class="btn">Entrar no DashFull</button>
+      <small>Você pode trocar depois no topo do painel.</small>
+    </div>
+  </div>
 
-  <div class="app-layout">
-    <aside class="sidebar" id="sidebar">
-      <div class="sidebar-brand">
-        <div class="brand-info">
-          <i class="fa-solid fa-cube logo-icon"></i>
-          <h2>DashFull</h2>
+  <div id="app" class="app sidebar-collapsed">
+    <aside class="sidebar">
+      <div class="sidebar-top">
+        <button id="toggleSidebar" class="icon-btn" title="Expandir/recolher menu">☰</button>
+        <div class="brand">
+          <div class="brand-icon">DF</div>
+          <div class="brand-text">
+            <strong>DashFull</strong>
+            <span>Full inbound control</span>
+          </div>
         </div>
-        <button id="btn-toggle-sidebar" class="btn-sidebar-toggle" title="Recolher Menu">
-          <i class="fa-solid fa-chevron-left" id="toggle-icon"></i>
-        </button>
       </div>
-      <ul class="sidebar-menu">
-        <li class="menu-item active" data-page="visao-geral">
-          <i class="fa-solid fa-chart-pie"></i> <span>Visão Geral</span>
-        </li>
-        <li class="menu-item" data-page="pendencias">
-          <i class="fa-solid fa-triangle-exclamation"></i> <span>Pendências</span>
-          <span id="badge-pendencias-nav" class="nav-badge">0</span>
-        </li>
-        <li class="menu-item" data-page="auditoria">
-          <i class="fa-solid fa-magnifying-glass-list"></i> <span>Auditoria</span>
-        </li>
-        <li class="menu-item" data-page="configuracoes">
-          <i class="fa-solid fa-gear"></i> <span>Configurações</span>
-        </li>
-      </ul>
-      <div class="sidebar-footer">
-        <span class="dot-online"></span> <span class="footer-text">Sistema Conectado</span>
+
+      <nav class="nav">
+        <button class="nav-btn active" data-view="resumo"><span class="nav-ico">▣</span><span class="nav-text">Resumo</span></button>
+        <button class="nav-btn" data-view="envios"><span class="nav-ico">▤</span><span class="nav-text">Envios</span></button>
+        <button class="nav-btn" data-view="itens"><span class="nav-ico">☷</span><span class="nav-text">Itens</span></button>
+        <button class="nav-btn" data-view="motoristas"><span class="nav-ico">▰</span><span class="nav-text">Motoristas</span></button>
+        <button class="nav-btn" data-view="sync"><span class="nav-ico">↻</span><span class="nav-text">Sincronizar</span></button>
+      </nav>
+
+      <div class="sidebar-status">
+        <span id="statusDot" class="dot"></span>
+        <div class="status-copy">
+          <strong id="statusText">Conectando</strong>
+          <small id="lastLoadText">Aguardando dados</small>
+        </div>
       </div>
     </aside>
 
-    <main class="main-content">
-      
-      <header class="main-header">
-        <div class="header-info">
-          <h1 id="header-title">Painel de Controle</h1>
-          <p id="header-subtitle">Monitoramento de envios em tempo real</p>
+    <main class="main">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">Sistema único web + mobile</p>
+          <h1 id="pageTitle">Resumo operacional</h1>
+          <p id="pageSubtitle">Resumo geral com gráficos, envios, itens, operador, motorista e veículo.</p>
         </div>
-        
-        <div class="header-controls">
-          <div class="search-box">
-            <i class="fa-solid fa-magnifying-glass"></i>
-            <input type="text" id="busca-id" placeholder="Buscar envio, SKU, produto ou código...">
+
+        <div class="hero-right">
+          <div class="operator-pill">
+            <span>Operador</span>
+            <strong id="currentOperator">—</strong>
+            <button id="changeOperator" class="mini-btn">Trocar</button>
           </div>
-          
-          <select id="filtro-conta" class="header-select">
-            <option value="Todas">Todas as Contas</option>
-            <option value="EHF Distribuidora">EHF Distribuidora</option>
-            <option value="EHF Comercio">EHF Comercio</option>
-            <option value="EHF Suprimentos">EHF Suprimentos</option>
-            <option value="EKN">EKN</option>
-          </select>
 
-          <select id="filtro-galpao" class="header-select">
-            <option value="Todos">Todos os Galpões</option>
-            <option value="Araçariguama">Araçariguama</option>
-            <option value="Perus">Perus</option>
-          </select>
-
-          <select id="ordenar-data" class="header-select">
-            <option value="recente">Data (Mais Recente)</option>
-            <option value="antiga">Data (Mais Antiga)</option>
-          </select>
-          <!-- botão mobile para abrir menu lateral -->
-<button id="btn-open-menu-mobile" class="btn-action" aria-label="Abrir menu" style="display:none;">
-  <i class="fa-solid fa-bars"></i>
-</button>
-          <div class="header-meta">
-            <div class="clock" id="display-operador" style="cursor: pointer; background: #e3f2fd; color: #1e88e5; border-color: #bbdefb;" title="Clique para trocar de operador">
-              <i class="fa-solid fa-user-gear"></i> <span id="nome-operador-header">---</span>
+          <div class="autosync-pill">
+            <span id="autoSyncDot" class="auto-dot"></span>
+            <div>
+              <strong id="autoSyncTitle">Sync automático</strong>
+              <small id="autoSyncText">Aguardando status</small>
             </div>
-            <span class="sync-badge" id="sync-status">Sincronizando...</span>
-            <div class="clock" id="live-clock">00:00:00</div>
+          </div>
+          <div class="hero-actions">
+            <button id="btnRefresh" class="btn ghost">Atualizar</button>
+            <button id="btnSyncEnviosTop" class="btn">Puxar envios</button>
+            <button id="btnSyncItensTop" class="btn dark">Puxar itens</button>
           </div>
         </div>
       </header>
 
-      <div id="page-visao-geral" class="page-pane active">
-        <section class="analytics-grid">
-          <div class="chart-card">
-            <h3>Ocupação por Galpão</h3>
-            <div class="chart-wrapper">
-              <canvas id="chart-galpoes"></canvas>
-            </div>
-          </div>
-          <div class="chart-card">
-            <h3>Geral Declarado vs Recebido (Volumetria Total)</h3>
-            <div class="chart-wrapper">
-              <canvas id="chart-divergencias"></canvas>
-            </div>
-          </div>
-        </section>
-
-        <section class="kpi-row">
-          <div class="kpi-card">
-            <div class="kpi-icon icon-blue"><i class="fa-solid fa-truck-ramp-box"></i></div>
-            <div class="kpi-data">
-              <small>Total de Envios</small>
-              <h2 id="total-envios">0</h2>
-            </div>
-          </div>
-          <div class="kpi-card">
-            <div class="kpi-icon icon-yellow"><i class="fa-solid fa-boxes-stacked"></i></div>
-            <div class="kpi-data">
-              <small>Total Declarado</small>
-              <h2 id="total-declarado">0</h2>
-            </div>
-          </div>
-          <div class="kpi-card">
-            <div class="kpi-icon icon-green"><i class="fa-solid fa-box-circle-check"></i></div>
-            <div class="kpi-data">
-              <small>Aptas para o Full</small>
-              <h2 id="total-recebido">0</h2>
-            </div>
-          </div>
-          <div class="kpi-card">
-            <div class="kpi-icon icon-red"><i class="fa-solid fa-percent"></i></div>
-            <div class="kpi-data">
-              <small>Taxa Discrepância</small>
-              <h2 id="taxa-discrepancia">0%</h2>
-            </div>
-          </div>
-        </section>
-
-        <div class="pills-bar">
-          <button class="pill active" data-status="Todos">Todos <span id="count-todos">(0)</span></button>
-          <button class="pill" data-status="closed_ok">Finalizados <span id="count-finalizados">(0)</span></button>
-          <button class="pill" data-status="closed_with_changes">Com Divergência <span id="count-divergencias">(0)</span></button>
-          <button class="pill" data-status="pending">Agendados <span id="count-agendados">(0)</span></button>
-        </div>
-
-        <div class="panel-card">
-          <div class="panel-card-header">
-            <h3>Listagem de Remessas em Tempo Real</h3>
-          </div>
-          <div class="table-responsive">
-            <table class="premium-table">
-              <thead>
-                <tr>
-                  <th>Conta</th>
-                  <th>ID Envio</th>
-                  <th>Status ML</th>
-                  <th>Meu Status</th>
-                  <th>Unidades <small>Declaradas / Recebidas</small></th>
-                  <th>Galpão</th>
-                  <th>Data Reservada</th>
-                  <th class="text-center">Ações Operacionais</th>
-                </tr>
-              </thead>
-              <tbody id="tbody-geral">
-                </tbody>
-            </table>
-          </div>
-
-          <div class="pagination-footer">
-            <span class="pagination-info" id="paginacao-info">Exibindo 0-0 de 0 envios</span>
-            <div class="pagination-buttons" id="paginacao-botoes">
-              </div>
-          </div>
-        </div>
+      <div class="mobile-nav">
+        <button class="mobile-tab active" data-view="resumo">Resumo</button>
+        <button class="mobile-tab" data-view="envios">Envios</button>
+        <button class="mobile-tab" data-view="itens">Itens</button>
+        <button class="mobile-tab" data-view="motoristas">Motoristas</button>
+        <button class="mobile-tab" data-view="sync">Sync</button>
       </div>
 
-      <div id="page-pendencias" class="page-pane">
-        <div class="alert-box-warning">
-          <i class="fa-solid fa-circle-exclamation"></i>
-          <div>
-            <h4>Atenção Operacional Requerida</h4>
-            <p>Os envios listados abaixo foram encerrados pelo Mercado Livre com divergências entre a nota fiscal e as peças bipadas.</p>
-          </div>
+      <section class="filters">
+        <div class="filter search">
+          <label>Busca</label>
+          <input id="searchInput" placeholder="envio, SKU, produto, operador, motorista, veículo..." />
         </div>
-        <div class="panel-card">
-          <div class="table-responsive">
-            <table class="premium-table">
-              <thead>
-                <tr>
-                  <th>Conta</th>
-                  <th>ID Envio</th>
-                  <th>Inconformidade</th>
-                  <th>Quebra Logística</th>
-                  <th>Galpão</th>
-                  <th class="text-center">Ação Corretiva</th>
-                </tr>
-              </thead>
-              <tbody id="tbody-pendencias">
-                </tbody>
-            </table>
-          </div>
+
+        <div class="filter">
+          <label>Conta</label>
+          <select id="filterConta"><option value="Todas">Todas</option></select>
         </div>
-      </div>
+
+        <div class="filter">
+          <label>Status</label>
+          <select id="filterStatus">
+            <option value="todos">Todos</option>
+            <option value="agendado">Agendados</option>
+            <option value="reservar_data">Reservar data</option>
+            <option value="finalizado">Finalizados</option>
+            <option value="cancelado">Cancelados</option>
+            <option value="ignorado">Ignorados</option>
+            <option value="pendente">Pendentes</option>
+            <option value="erro_itens">Erro nos itens</option>
+            <option value="sem_itens">Sem itens</option>
+          </select>
+        </div>
+
+        <div class="filter">
+          <label>Itens</label>
+          <select id="filterItemProcess">
+            <option value="todos">Todos</option>
+            <option value="100">100% feito</option>
+            <option value="andamento">Em andamento</option>
+            <option value="0">0% feito</option>
+            <option value="sem_itens">Sem itens</option>
+          </select>
+        </div>
+
+        <div class="filter">
+          <label>Dia do envio</label>
+          <input id="filterDate" type="date" />
+        </div>
+
+        <div class="filter">
+          <label>Mês motorista</label>
+          <input id="filterMonth" type="month" />
+        </div>
+
+        <button id="btnToday" class="btn ghost small">Hoje</button>
+        <button id="btnClearDate" class="btn ghost small">Limpar</button>
+      </section>
+
+      <section id="view-resumo" class="view active">
+        <div class="kpis">
+          <article class="kpi"><span>Envios filtrados</span><strong id="kpiEnvios">0</strong><small>Total conforme filtros</small></article>
+          <article class="kpi"><span>Itens carregados</span><strong id="kpiItens">0</strong><small>SKUs carregados</small></article>
+          <article class="kpi"><span>Progresso médio</span><strong id="kpiProgresso">0%</strong><small>Qtd feita / declarada</small></article>
+          <article class="kpi"><span>Sem itens</span><strong id="kpiSemItens">0</strong><small>Entram na fila</small></article>
+          <article class="kpi"><span>Motoristas no mês</span><strong id="kpiMotoristas">0</strong><small>Com Full no mês</small></article>
+          <article class="kpi danger"><span>Erros</span><strong id="kpiErros">0</strong><small>Falhas de extração</small></article>
+        </div>
+
+        <div class="chart-grid">
+          <article class="card chart-card">
+            <div class="card-head"><div><h2>Status dos envios</h2><p>Agendados, reservar data, cancelados, finalizados e ignorados.</p></div></div>
+            <div id="chartStatus" class="chart-area"></div>
+          </article>
+
+          <article class="card chart-card">
+            <div class="card-head"><div><h2>Envios por conta</h2><p>Volume por operação.</p></div></div>
+            <div id="chartContas" class="chart-area"></div>
+          </article>
+
+          <article class="card chart-card wide">
+            <div class="card-head"><div><h2>Calendário de envios</h2><p>Quantidade por dia, usando data e horário da plataforma.</p></div></div>
+            <div id="chartTimeline" class="chart-area timeline"></div>
+          </article>
+
+          <article class="card chart-card">
+            <div class="card-head"><div><h2>Processo dos itens</h2><p>Feitos, parciais, pendentes e não tem.</p></div></div>
+            <div id="chartItensStatus" class="chart-area"></div>
+          </article>
+
+          <article class="card chart-card">
+            <div class="card-head"><div><h2>Full por motorista no mês</h2><p>Resumo mensal dos motoristas.</p></div></div>
+            <div id="chartMotoristas" class="chart-area"></div>
+          </article>
+        </div>
+
+        <article class="card">
+          <div class="card-head">
+            <div><h2>Fila crítica</h2><p>Envios sem itens, com erro, próximos ou em andamento.</p></div>
+            <span id="filaCriticaCount" class="pill">0</span>
+          </div>
+          <div id="filaCritica" class="priority-list"></div>
+        </article>
+      </section>
+
+      <section id="view-envios" class="view">
+        <div class="card">
+          <div class="card-head">
+            <div><h2>Envios Full</h2><p>Os itens abrem abaixo do próprio envio. Apenas o envio clicado abre.</p></div>
+            <span id="enviosCount" class="pill">0 envios</span>
+          </div>
+
+          <div class="quick-filters">
+            <button data-quick="todos" class="quick active">Todos</button>
+            <button data-quick="agendado" class="quick">Agendados</button>
+            <button data-quick="reservar_data" class="quick">Reservar data</button>
+            <button data-quick="finalizado" class="quick">Finalizados</button>
+            <button data-quick="cancelado" class="quick">Cancelados</button>
+            <button data-quick="ignorado" class="quick">Ignorados</button>
+            <button data-quick="sem_itens" class="quick">Sem itens</button>
+          </div>
+
+          <div id="enviosList" class="envios-list"></div>
+        </div>
+      </section>
+
+      <section id="view-itens" class="view">
+        <div class="card">
+          <div class="card-head">
+            <div><h2>Itens de todos os envios</h2><p>Conferência global por produto, SKU, operador e status.</p></div>
+            <span id="itensCount" class="pill">0 itens</span>
+          </div>
+          <div id="itensList" class="items-table-wrap"></div>
+        </div>
+      </section>
+
+      <section id="view-motoristas" class="view">
+        <div class="motorista-grid">
+          <article class="card">
+            <div class="card-head">
+              <div><h2>Resumo mensal por motorista</h2><p>Quantos Full cada motorista fez no mês selecionado.</p></div>
+              <span id="motoristasCount" class="pill">0 motoristas</span>
+            </div>
+            <div id="motoristasResumo" class="motorista-list"></div>
+          </article>
+
+          <article class="card">
+            <div class="card-head">
+              <div><h2>Resumo mensal por veículo</h2><p>Quantos Full cada veículo fez no mês selecionado.</p></div>
+              <span id="veiculosCount" class="pill">0 veículos</span>
+            </div>
+            <div id="veiculosResumo" class="motorista-list"></div>
+          </article>
+        </div>
+
+        <article class="card">
+          <div class="card-head">
+            <div><h2>Envios com motorista/veículo</h2><p>Controle logístico dos Full no mês.</p></div>
+            <span id="transporteEnviosCount" class="pill">0 envios</span>
+          </div>
+          <div id="transporteEnvios" class="envios-list compact"></div>
+        </article>
+      </section>
+
+      <section id="view-sync" class="view">
+        <div class="sync-grid">
+          <article class="card">
+            <h2>Sincronização</h2>
+            <p>Os itens rodam em segundo plano. Use os botões apenas se quiser forçar uma rodada ou corrigir erro.</p>
+            <div class="sync-actions">
+              <button id="btnSyncEnvios" class="btn">Puxar envios</button>
+              <button id="btnSyncItens30" class="btn dark">Puxar 30 itens</button>
+              <button id="btnSyncItens80" class="btn dark">Puxar 80 itens</button>
+              <button id="btnRebuildViews" class="btn ghost">Reorganizar abas</button>
+            </div>
+          </article>
+
+          <article class="card">
+            <h2>Retorno do backend</h2>
+            <pre id="syncLog" class="log-box">Aguardando ação...</pre>
+          </article>
+        </div>
+      </section>
     </main>
   </div>
 
-  <div id="modal-operador" class="modal" aria-hidden="false">
-    <div class="modal-panel" style="width: 420px; text-align: center; padding: 28px; border-radius: 16px;">
-      <div class="kpi-icon icon-blue" style="margin: 0 auto 16px auto; width: 56px; height: 56px; font-size: 24px;">
-        <i class="fa-solid fa-user-shield"></i>
-      </div>
-      <h3 style="font-size: 18px; font-weight: 800;">Identificação do Operador</h3>
-      <p style="font-size: 13px; color: var(--text-muted); margin: 8px 0 20px 0; line-height: 1.4;">
-        Por favor, informe seu nome ou iniciais para registrar o histórico de início e término das preparações das remessas.
-      </p>
-      <input type="text" id="input-nome-operador" placeholder="Ex: Max, Silva, Log..." style="width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; text-align: center; font-weight: 600; outline: none; margin-bottom: 20px; background: #fafafa;">
-      <button id="btn-entrar-painel" class="btn-action primary" style="width: 100%; padding: 12px; font-size: 14px; margin: 0; border-radius: 8px;">Entrar no Sistema</button>
-    </div>
-  </div>
+  <div id="toast" class="toast"></div>
 
-  <script src="script.js"></script>
+  <script>
+    window.DASHFULL_BACKEND = "https://atendente-dashfull-itens-worker.2cwhzy.easypanel.host";
+  </script>
+  <script src="./script.js?v=11"></script>
 </body>
 </html>

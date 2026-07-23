@@ -1,15 +1,20 @@
 {
-  "name": "dashfull-items-worker",
-  "version": "1.0.0",
-  "description": "Worker automatizado para puxar itens dos envios Full do Mercado Livre e gravar no Firebase.",
-  "main": "items-worker.js",
+  "name": "dashfull-webapp-bridge-worker",
+  "version": "3.0.0",
+  "description": "DashFull WebApp Bridge v3: itens Full em lotes, planilha organizada e API para mobile.",
+  "main": "server.js",
   "type": "commonjs",
   "scripts": {
-    "start": "node items-worker.js",
-    "once": "node items-worker.js once"
+    "start": "node server.js",
+    "once": "node server.js once"
   },
   "dependencies": {
+    "cors": "^2.8.5",
     "dotenv": "^16.4.7",
-    "puppeteer": "^24.0.0"
+    "express": "^4.19.2",
+    "puppeteer-core": "^24.0.0"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

@@ -1,0 +1,45 @@
+# DASHFULL WEBAPP BRIDGE v2.0.0
+# Sem Firebase e sem Service Account JSON.
+# EasyPanel usa Apps Script WebApp como ponte para escrever/ler Google Sheets.
+
+PORT=3000
+WORKER_MODE=continuous
+RUN_ON_START=true
+
+# Cole aqui a URL /exec do Apps Script publicado
+SHEETS_WEBAPP_URL=https://script.google.com/macros/s/AKfycbzwsplHcLG6uyjVkB8fu9NYWvv_vU47jPZr_Im4yYOvEhEwv1mVyqZJitAUgNEuQYn4dw/exec
+
+# Opcional: se você definir DASHFULL_SECRET nas Propriedades do Apps Script, repita aqui
+SHEETS_WEBAPP_SECRET=
+
+# Mercado Livre - envios
+LIMITE_POR_PAGINA=30
+MAX_PAGINAS_POR_CONTA=25
+INTERVALO_ENVIOS_MINUTOS=15
+
+# Mercado Livre - itens
+INTERVALO_ITENS_MINUTOS=5
+MAX_ENVIOS_POR_RODADA=40
+MAX_POR_CONTA_POR_RODADA=20
+CONCORRENCIA_PAGINAS=4
+
+STALE_HOURS=12
+ERROR_COOLDOWN_MINUTES=60
+
+HEADLESS=true
+PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+CACHE_TTL_MS=30000
+SYNC_SECRET=
+
+ENABLED_ACCOUNTS=
+ACCOUNT_PRIORITY=EKN,EHF Suprimentos,EHF Comercio,EHF Distribuidora
+
+COOKIE_EHF_DISTRIBUIDORA=
+COOKIE_EHF_COMERCIO=
+COOKIE_EHF_SUPRIMENTOS=
+COOKIE_EKN=
+
+# Tamanho dos lotes enviados ao Apps Script. Use 50 ou 80 para evitar erro HTML/timeouts.
+WEBAPP_CHUNK_SIZE=80
+
+# Use /sync-items-all?limit=80 para forçar uma rodada maior de itens.
