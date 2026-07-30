@@ -36,6 +36,7 @@
         <button class="nav-btn active" data-view="resumo"><span class="nav-ico">▣</span><span class="nav-text">Resumo</span></button>
         <button class="nav-btn" data-view="envios"><span class="nav-ico">▤</span><span class="nav-text">Envios</span></button>
         <button class="nav-btn" data-view="itens"><span class="nav-ico">☷</span><span class="nav-text">Itens</span></button>
+        <button class="nav-btn" data-view="produtos"><span class="nav-ico">◆</span><span class="nav-text">Produtos / Mês</span></button>
         <button class="nav-btn" data-view="motoristas"><span class="nav-ico">▰</span><span class="nav-text">Motoristas</span></button>
         <button class="nav-btn" data-view="sync"><span class="nav-ico">↻</span><span class="nav-text">Sincronizar</span></button>
       </nav>
@@ -83,6 +84,7 @@
         <button class="mobile-tab active" data-view="resumo">Resumo</button>
         <button class="mobile-tab" data-view="envios">Envios</button>
         <button class="mobile-tab" data-view="itens">Itens</button>
+        <button class="mobile-tab" data-view="produtos">Produtos</button>
         <button class="mobile-tab" data-view="motoristas">Motoristas</button>
         <button class="mobile-tab" data-view="sync">Sync</button>
       </div>
@@ -217,6 +219,31 @@
         </div>
       </section>
 
+
+      <section id="view-produtos" class="view">
+        <div class="kpis produtos-kpis">
+          <article class="kpi"><span>Unidades no mês</span><strong id="prodKpiUnidades">0</strong><small>previstas + confirmadas</small></article>
+          <article class="kpi"><span>SKUs movimentados</span><strong id="prodKpiSkus">0</strong><small>produtos únicos</small></article>
+          <article class="kpi"><span>Fulls com itens</span><strong id="prodKpiFulls">0</strong><small>envios no mês</small></article>
+          <article class="kpi"><span>Confirmado</span><strong id="prodKpiConfirmado">0</strong><small>qtd feita</small></article>
+        </div>
+        <div class="produtos-grid">
+          <article class="card">
+            <div class="card-head"><div><h2>Ranking mensal de produtos</h2><p>Todo mês começa em zero. A contagem soma os itens dos Fulls daquele mês.</p></div><span id="produtosCount" class="pill">0 produtos</span></div>
+            <div class="produtos-actions">
+              <button id="btnAtualizarProdutos" class="mini-btn dark">Atualizar Produtos / Mês</button>
+              <button id="btnExportarProdutos" class="mini-btn">Baixar CSV</button>
+              <span id="produtosStatus" class="perf-note">Usando mês selecionado no filtro</span>
+            </div>
+            <div id="produtosResumo" class="produtos-table-wrap"></div>
+          </article>
+          <article class="card">
+            <div class="card-head"><div><h2>Top produtos do mês</h2><p>Visual rápido dos produtos mais enviados para Full.</p></div></div>
+            <div id="produtosTopChart" class="chart-area"></div>
+          </article>
+        </div>
+      </section>
+
       <section id="view-motoristas" class="view">
         <div class="motorista-grid">
           <article class="card">
@@ -256,6 +283,7 @@
               <button id="btnSyncItens80" class="btn dark">Puxar 80 itens</button>
               <button id="btnRebuildViews" class="btn ghost">Reorganizar abas</button>
               <button id="btnClearCache" class="btn ghost">Limpar cache local</button>
+              <button id="btnAtualizarProdutosSync" class="btn ghost">Atualizar Produtos / Mês</button>
             </div>
           </article>
 
@@ -273,6 +301,6 @@
   <script>
     window.DASHFULL_BACKEND = "https://atendente-dashfull-itens-worker.2cwhzy.easypanel.host";
   </script>
-  <script src="./script.js?v=19"></script>
+  <script src="./script.js?v=21"></script>
 </body>
 </html>

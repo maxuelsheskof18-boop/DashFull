@@ -3,6 +3,8 @@ const BACKEND = (window.DASHFULL_BACKEND || "https://atendente-dashfull-itens-wo
 let base = {};
 let envios = [];
 let itensFlat = [];
+let produtosMes = [];
+let produtosMesCache = {};
 let detailCache = {};
 let loadingDetails = new Set();
 let prefetchTimer = null;
@@ -16,11 +18,13 @@ const STATUS_REFRESH_MS = 15000;
 const AUTO_SYNC_ITEMS_MS = 180000;
 const AUTO_SYNC_LOCK_KEY = "dashfull_auto_sync_items_lock";
 const DETAIL_CACHE_KEY = "dashfull_detail_cache_v15";
+const PENDING_PATCHES_KEY = "dashfull_pending_patches_v21";
 const DETAIL_CACHE_MAX = 120;
 const DETAIL_CACHE_TTL_MS = 1000 * 60 * 60 * 12;
 let refreshTimer = null;
 let statusTimer = null;
 let autoSyncTimer = null;
+let pendingTimer = null;
 let isLoadingData = false;
 let lastDataSignature = "";
 let enviosRenderLimit = 80;
@@ -197,10 +201,61 @@ function setAutoSyncStatus(mode, text) {
   desc.textContent = text || "";
 }
 
+
+function getPendingPatches() {
+  try { return JSON.parse(localStorage.getItem(PENDING_PATCHES_KEY) || "[]") || []; }
+  catch(e) { return []; }
+}
+
+function savePendingPatches(list) {
+  try { localStorage.setItem(PENDING_PATCHES_KEY, JSON.stringify(list || [])); }
+  catch(e) {}
+}
+
+function addPendingPatch(entry) {
+  const list = getPendingPatches();
+  const key = entry.key || `${entry.type}|${entry.id}|${entry.sku || ""}`;
+  const next = list.filter(x => x.key !== key);
+  next.push({ ...entry, key, created_at: entry.created_at || new Date().toISOString(), tries: entry.tries || 0 });
+  savePendingPatches(next.slice(-500));
+  updatePendingBadge();
+}
+
+function updatePendingBadge() {
+  const total = getPendingPatches().length;
+  if (total > 0) setAutoSyncStatus("err", `${total} alteração(ões) pendente(s) de sincronizar`);
+}
+
+async function processPendingPatches() {
+  const list = getPendingPatches();
+  if (!list.length) return;
+  const remaining = [];
+  for (const item of list) {
+    try {
+      if (item.type === "item") {
+        await api(`/historico_envios/${encodeURIComponent(item.id)}/itens/${encodeURIComponent(item.sku)}.json`, { method:"PATCH", body:JSON.stringify(item.patch) });
+      } else if (item.type === "envio") {
+        await api(`/historico_envios/${encodeURIComponent(item.id)}.json`, { method:"PATCH", body:JSON.stringify(item.patch) });
+      }
+    } catch(e) {
+      remaining.push({ ...item, tries: Number(item.tries || 0) + 1, last_error: e.message, last_try_at: new Date().toISOString() });
+    }
+  }
+  savePendingPatches(remaining);
+  if (!remaining.length) {
+    setAutoSyncStatus("ok", "Pendências sincronizadas");
+    toast("Alterações pendentes sincronizadas");
+    await loadData(true);
+  } else {
+    updatePendingBadge();
+  }
+}
+
 function startRealtimeLoops() {
   clearInterval(refreshTimer);
   clearInterval(statusTimer);
   clearInterval(autoSyncTimer);
+  clearInterval(pendingTimer);
 
   refreshTimer = setInterval(() => {
     if (document.hidden || !currentOperator) return;
@@ -217,7 +272,14 @@ function startRealtimeLoops() {
     autoSyncItems();
   }, AUTO_SYNC_ITEMS_MS);
 
+  pendingTimer = setInterval(() => {
+    if (document.hidden || !currentOperator) return;
+    processPendingPatches();
+  }, 10000);
+
   refreshBackendStatus();
+  updatePendingBadge();
+  setTimeout(() => processPendingPatches(), 3000);
   setTimeout(() => autoSyncItems(), 10000);
 }
 
@@ -732,6 +794,7 @@ function setView(next) {
     resumo:["Resumo operacional","Painel geral com gráficos, operadores, motoristas e fila crítica."],
     envios:["Envios Full","Cada envio mostra data/hora da plataforma, data prevista, operador, motorista e itens."],
     itens:["Itens dos Full","Conferência global por produto, SKU e operador."],
+    produtos:["Produtos / Mês","Contagem mensal dos produtos enviados para Full. Todo mês começa em zero."],
     motoristas:["Motoristas e veículos","Resumo mensal de Full por motorista e por veículo."],
     sync:["Sincronização","Atualização do Mercado Livre e reorganização da planilha."]
   };
@@ -749,6 +812,7 @@ function renderActive() {
   if (view === "resumo") renderResumo();
   else if (view === "envios") renderEnvios();
   else if (view === "itens") renderItens();
+  else if (view === "produtos") renderProdutosMes();
   else if (view === "motoristas") renderMotoristas();
   else if (view === "sync") {
     // não precisa renderizar tabelas na tela de sync
@@ -1077,6 +1141,10 @@ function envioCard(e) {
         <span>Itens do envio na mesma página</span>
         <span class="pill">${itemCount} itens • ${pct(proc.percent)}</span>
       </button>
+      <div class="items-bulk-actions">
+        <button class="mini-btn dark" onclick="saveAllOpenItems('${html(e.id_envio)}')">Salvar todos os itens abertos</button>
+        <span class="subline">Ao marcar Feito, a quantidade preenche automaticamente com o declarado.</span>
+      </div>
       <div id="items-${html(e.id_envio)}" class="items-panel open">
         ${isLoading ? `<div class="subline">Carregando itens do envio #${html(e.id_envio)} direto da planilha...</div>` : items.length ? items.slice(0,160).map(([sku,it]) => itemRow(e.id_envio, sku, it)).join("") : itemCount ? `<div class="subline">A planilha informa ${itemCount} itens, mas o backend ainda não devolveu a lista detalhada desse envio. Atualize também o backend v19 para liberar esses itens por ID.</div>` : `<div class="subline">Sem itens carregados ainda. O sincronizador em segundo plano vai preencher quando houver dados.</div>`}
       </div>
@@ -1084,19 +1152,58 @@ function envioCard(e) {
   </article>`;
 }
 
+
+function getItemCurrent(id, sku) {
+  const detail = detailCache[String(id)] || base[String(id)] || {};
+  return detail.itens?.[sku] || base[String(id)]?.itens?.[sku] || null;
+}
+
+function handleItemStatusChange(id, skuEnc, key) {
+  const sku = decodeURIComponent(skuEnc);
+  const status = document.getElementById(`status-${key}`)?.value || "Pendente";
+  const qtdEl = document.getElementById(`qtd-${key}`);
+  const item = getItemCurrent(id, sku) || {};
+  const declarado = Number(item.declarado || 0);
+
+  if (status === "Feito" && qtdEl && Number(qtdEl.value || 0) <= 0 && declarado > 0) {
+    qtdEl.value = declarado;
+  }
+
+  if ((status === "Pendente" || status === "Não feito") && qtdEl && Number(qtdEl.value || 0) < 0) {
+    qtdEl.value = 0;
+  }
+
+  const state = document.getElementById(`item-state-${key}`);
+  if (state) {
+    state.className = "item-state dirty";
+    state.textContent = "alterado";
+  }
+}
+
+function markItemDirty(key) {
+  const state = document.getElementById(`item-state-${key}`);
+  if (state) {
+    state.className = "item-state dirty";
+    state.textContent = "alterado";
+  }
+}
+
 function itemRow(id, sku, it) {
   const key = `${id}-${String(sku).replace(/[^a-zA-Z0-9_-]/g, "_")}`;
-  return `<div class="item-row">
+  const statusAtual = it.status_controle || "Pendente";
+  const qtdAtual = it.qtd_feita ?? 0;
+  return `<div class="item-row" id="item-row-${html(key)}">
     <div>
       <strong>${html(it.titulo || sku)}</strong>
       <div class="subline">SKU ${html(sku)} • Dec ${it.declarado || 0} • Falta ${it.qtd_faltante || 0} • Operador ${html(it.atualizado_por || "—")}</div>
+      <span id="item-state-${html(key)}" class="item-state saved">${it.atualizado_em ? "salvo" : ""}</span>
     </div>
-    <input id="qtd-${html(key)}" type="number" min="0" value="${html(it.qtd_feita ?? 0)}" />
-    <select id="status-${html(key)}">
-      ${["Pendente","Feito","Parcial","Não tem","Não feito"].map(s => `<option ${(it.status_controle || "Pendente") === s ? "selected" : ""}>${s}</option>`).join("")}
+    <input id="qtd-${html(key)}" type="number" min="0" value="${html(qtdAtual)}" oninput="markItemDirty('${html(key)}')" />
+    <select id="status-${html(key)}" onchange="handleItemStatusChange('${html(id)}','${encodeURIComponent(sku)}','${html(key)}')">
+      ${["Pendente","Feito","Parcial","Não tem","Não feito"].map(s => `<option ${statusAtual === s ? "selected" : ""}>${s}</option>`).join("")}
     </select>
     <div class="item-actions">
-      <textarea id="obs-${html(key)}" placeholder="Obs do item">${html(it.observacao_item || "")}</textarea>
+      <textarea id="obs-${html(key)}" placeholder="Obs do item" oninput="markItemDirty('${html(key)}')">${html(it.observacao_item || "")}</textarea>
       <button class="save-btn" onclick="saveItem('${html(id)}','${encodeURIComponent(sku)}','${html(key)}')">Salvar</button>
     </div>
   </div>`;
@@ -1168,6 +1275,114 @@ function renderItens() {
   $("itensList").innerHTML = table + more;
 }
 
+
+function produtoNome(item, sku) { return item.titulo || item.nome || item.product_name || item.descricao || sku || "Produto sem nome"; }
+function produtoSku(sku, item) { return sku || item.sku || item.inventory_id || item.item_id || "SEM_SKU"; }
+function quantidadePrevistaItem(item) { return Number(item.declarado || item.quantidade || item.qtd || item.qtd_declarada || 0) || 0; }
+function quantidadeConfirmadaItem(item) { return Number(item.qtd_feita || item.quantidade_feita || item.qtd_confirmada || 0) || 0; }
+function monthLabelBR(month) {
+  if (!month) return "Mês atual";
+  const [y,m] = String(month).split("-");
+  const nomes = ["","janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
+  return `${nomes[Number(m)] || m} de ${y}`;
+}
+function gerarProdutosMesLocal(month) {
+  const rows = new Map();
+  const enviosDoMes = envios.filter(e => envioMonthKey(e) === month);
+  for (const envio of enviosDoMes) {
+    for (const [skuRaw, item] of getItens(envio)) {
+      const sku = produtoSku(skuRaw, item);
+      const nome = produtoNome(item, sku);
+      const key = `${month}|${sku}`;
+      const prevista = quantidadePrevistaItem(item);
+      const confirmada = quantidadeConfirmadaItem(item);
+      const quantidade = confirmada > 0 ? confirmada : prevista;
+      if (!rows.has(key)) {
+        rows.set(key, { mes: month, sku, produto: nome, quantidade_prevista: 0, quantidade_confirmada: 0, quantidade_enviada: 0, fulls: new Set(), contas: new Set(), galpoes: new Set(), ultimo_envio: "", chave: key });
+      }
+      const row = rows.get(key);
+      row.produto = nome || row.produto;
+      row.quantidade_prevista += prevista;
+      row.quantidade_confirmada += confirmada;
+      row.quantidade_enviada += quantidade;
+      row.fulls.add(String(envio.id_envio));
+      if (envio.conta) row.contas.add(envio.conta);
+      if (envio.galpao) row.galpoes.add(envio.galpao);
+      const dt = shipmentPlatformDate(envio);
+      if (dt && String(dt) > String(row.ultimo_envio || "")) row.ultimo_envio = dt;
+    }
+  }
+  return [...rows.values()].map(r => ({ ...r, fulls_count: r.fulls.size, contas: [...r.contas].join(" / "), galpoes: [...r.galpoes].join(" / "), fulls: [...r.fulls].join(", ") })).sort((a,b) => b.quantidade_enviada - a.quantidade_enviada || String(a.produto).localeCompare(String(b.produto)));
+}
+async function carregarProdutosMes(month, force = false) {
+  const key = month || currentMonthValue();
+  if (!force && produtosMesCache[key]) { produtosMes = produtosMesCache[key]; return produtosMes; }
+  try {
+    const resp = await api(`/api/produtos-mes?mes=${encodeURIComponent(key)}`);
+    const rows = Array.isArray(resp?.produtos) ? resp.produtos : [];
+    produtosMes = rows; produtosMesCache[key] = rows; return rows;
+  } catch(e) {
+    produtosMes = gerarProdutosMesLocal(key); produtosMesCache[key] = produtosMes; return produtosMes;
+  }
+}
+function renderProdutosMes() {
+  const f = getFilters();
+  const month = f.month || currentMonthValue();
+  carregarProdutosMes(month).then(rows => {
+    const q = f.q;
+    const filtered = rows.filter(r => !q || norm([r.sku, r.produto, r.contas, r.galpoes, r.fulls].join(" ")).includes(q));
+    const totalUnidades = filtered.reduce((acc,r) => acc + Number(r.quantidade_enviada || r.quantidade || 0), 0);
+    const totalConfirmado = filtered.reduce((acc,r) => acc + Number(r.quantidade_confirmada || 0), 0);
+    const fulls = new Set();
+    for (const r of filtered) String(r.fulls || "").split(",").map(x => x.trim()).filter(Boolean).forEach(id => fulls.add(id));
+    $("prodKpiUnidades").textContent = totalUnidades;
+    $("prodKpiSkus").textContent = filtered.length;
+    $("prodKpiFulls").textContent = fulls.size;
+    $("prodKpiConfirmado").textContent = totalConfirmado;
+    $("produtosCount").textContent = `${filtered.length} produtos`;
+    $("produtosStatus").textContent = `Mês: ${monthLabelBR(month)} • ${filtered.length} SKUs`;
+    renderProdutosTabela(filtered.slice(0, 300));
+    renderProdutosTopChart(filtered.slice(0, 10));
+  });
+}
+function renderProdutosTabela(rows) {
+  const htmlRows = rows.map((r, idx) => `
+    <tr>
+      <td><strong>${idx + 1}</strong></td>
+      <td><div class="product-name">${html(r.produto || "")}</div><div class="subline">SKU ${html(r.sku || "")}</div></td>
+      <td><strong>${Number(r.quantidade_enviada || r.quantidade || 0)}</strong><div class="subline">previsto + confirmado</div></td>
+      <td>${Number(r.quantidade_prevista || 0)}</td>
+      <td>${Number(r.quantidade_confirmada || 0)}</td>
+      <td>${Number(r.fulls_count || 0)}</td>
+      <td>${html(r.contas || "—")}</td>
+      <td>${r.ultimo_envio ? formatDate(r.ultimo_envio) : "—"}</td>
+    </tr>`).join("");
+  $("produtosResumo").innerHTML = `<table class="items-table produtos-table"><thead><tr><th>#</th><th>Produto</th><th>Qtd mês</th><th>Previsto</th><th>Confirmado</th><th>Fulls</th><th>Contas</th><th>Último envio</th></tr></thead><tbody>${htmlRows || `<tr><td colspan="8">Nenhum produto movimentado nesse mês.</td></tr>`}</tbody></table>`;
+}
+function renderProdutosTopChart(rows) {
+  const data = rows.map(r => [r.produto || r.sku, Number(r.quantidade_enviada || r.quantidade || 0)]);
+  renderBarChart($("produtosTopChart"), data, { limit: 10 });
+}
+function exportarProdutosMesCSV() {
+  const month = getFilters().month || currentMonthValue();
+  const rows = produtosMes || [];
+  const header = ["mes","sku","produto","quantidade_mes","quantidade_prevista","quantidade_confirmada","fulls_count","contas","galpoes","ultimo_envio"];
+  const csv = [header.join(";"), ...rows.map(r => header.map(h => {
+    const val = h === "quantidade_mes" ? (r.quantidade_enviada || r.quantidade || 0) : (r[h] ?? "");
+    return `"${String(val).replace(/"/g,'""')}"`;
+  }).join(";"))].join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a"); a.href = url; a.download = `produtos_mes_${month}.csv`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+}
+async function atualizarProdutosMes(force = true) {
+  const month = getFilters().month || currentMonthValue();
+  produtosMesCache[month] = null;
+  await carregarProdutosMes(month, force);
+  renderProdutosMes();
+  toast("Produtos / Mês atualizado");
+}
+
 function monthlyDriverRows(month, field) {
   const map = new Map();
   const filtered = envios.filter(e => !month || envioMonthKey(e) === month);
@@ -1229,24 +1444,60 @@ function setSaveState(id, state, text) {
 }
 
 function patchLocalEnvio(id, patch) {
-  if (!base[id]) base[id] = { id_envio: id, itens: {} };
-  base[id] = { ...base[id], ...patch };
+  const key = String(id);
+  if (!base[key]) base[key] = { id_envio: key, itens: {} };
+  base[key] = { ...base[key], ...patch };
+
+  if (detailCache[key]) {
+    detailCache[key] = { ...detailCache[key], ...patch };
+    if (base[key].itens && !detailCache[key].itens) detailCache[key].itens = base[key].itens;
+    saveDetailCache();
+  }
+
   rebuildFlat();
-  renderAll();
+  renderActive();
 }
 
 function patchLocalItem(id, sku, patch) {
-  if (!base[id]) base[id] = { id_envio: id, itens: {} };
-  if (!base[id].itens) base[id].itens = {};
-  if (!base[id].itens[sku]) base[id].itens[sku] = { sku };
-  const current = base[id].itens[sku];
-  const next = { ...current, ...patch };
+  const key = String(id);
+  if (!base[key]) base[key] = { id_envio: key, itens: {} };
+  if (!base[key].itens) base[key].itens = {};
+  if (!base[key].itens[sku]) base[key].itens[sku] = { sku };
+
+  const current = base[key].itens[sku];
+  const next = { ...current, ...patch, sku };
   const declarado = Number(next.declarado || 0);
   const feita = Number(next.qtd_feita || 0);
   next.qtd_faltante = Math.max(0, declarado - feita);
-  base[id].itens[sku] = next;
+
+  base[key].itens[sku] = next;
+
+  // Correção principal: se existe cache de detalhes, atualiza o cache também.
+  // Antes a tela re-renderizava lendo o item antigo do detailCache e parecia que não salvava.
+  if (!detailCache[key]) detailCache[key] = { ...(base[key] || {}), id_envio: key, itens: {} };
+  if (!detailCache[key].itens) detailCache[key].itens = {};
+  detailCache[key].itens[sku] = next;
+  detailCache[key] = { ...detailCache[key], itens_qtd: Object.keys(detailCache[key].itens || {}).length, atualizado_em: new Date().toISOString() };
+  saveDetailCache();
+
   rebuildFlat();
-  renderAll();
+  renderActive();
+}
+
+
+async function saveAllOpenItems(id) {
+  const envio = detailCache[String(id)] || base[String(id)] || {};
+  const itens = Object.entries(envio.itens || {});
+  if (!itens.length) {
+    toast("Nenhum item aberto para salvar");
+    return;
+  }
+  for (const [sku] of itens) {
+    const key = `${id}-${String(sku).replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+    const row = document.getElementById(`item-row-${key}`);
+    if (row) await saveItem(id, encodeURIComponent(sku), key);
+  }
+  toast("Itens abertos enviados para salvar");
 }
 
 async function saveEnvioOperacao(id) {
@@ -1275,14 +1526,35 @@ async function saveEnvioOperacao(id) {
 }
 
 async function saveItem(id, skuEnc, key) {
-  const qtd = Number(document.getElementById(`qtd-${key}`)?.value || 0);
+  const sku = decodeURIComponent(skuEnc);
+  const item = getItemCurrent(id, sku) || {};
+  const qtdEl = document.getElementById(`qtd-${key}`);
   const status = document.getElementById(`status-${key}`)?.value || "Pendente";
   const obs = document.getElementById(`obs-${key}`)?.value || "";
-  await patchItem(id, skuEnc, {
+  const state = document.getElementById(`item-state-${key}`);
+
+  let qtd = Number(qtdEl?.value || 0);
+  const declarado = Number(item.declarado || 0);
+  if (status === "Feito" && qtd <= 0 && declarado > 0) {
+    qtd = declarado;
+    if (qtdEl) qtdEl.value = declarado;
+  }
+
+  if (state) {
+    state.className = "item-state saving";
+    state.textContent = "salvando...";
+  }
+
+  const ok = await patchItem(id, skuEnc, {
     qtd_feita: qtd,
     status_controle: status,
     observacao_item: obs
   });
+
+  if (state) {
+    state.className = ok ? "item-state saved" : "item-state pending";
+    state.textContent = ok ? "salvo" : "pendente";
+  }
 }
 
 async function patchEnvio(id, patch) {
@@ -1297,7 +1569,6 @@ async function patchEnvio(id, patch) {
     hora_operacao: new Date().toISOString()
   };
 
-  const old = base[id] ? { ...base[id] } : null;
   setSaveState(id, "saving", "salvando...");
   patchLocalEnvio(id, payload);
 
@@ -1305,22 +1576,18 @@ async function patchEnvio(id, patch) {
     await api(`/historico_envios/${encodeURIComponent(id)}.json`, { method:"PATCH", body:JSON.stringify(payload) });
     setSaveState(id, "saved", `salvo por ${currentOperator}`);
     toast(`Salvo por ${currentOperator}`);
+    return true;
   } catch(e) {
-    if (old) {
-      base[id] = old;
-      rebuildFlat();
-      renderAll();
-    }
-    setSaveState(id, "error", "erro ao salvar");
-    toast("Erro ao salvar envio: " + e.message);
+    addPendingPatch({ type:"envio", id:String(id), patch: payload });
+    setSaveState(id, "error", "pendente sincronizar");
+    toast("Sem resposta do backend. Alteração ficou na fila e tentará sincronizar.");
+    return false;
   }
 }
 
 async function patchItem(id, skuEnc, patch) {
   if (!currentOperator) return ensureOperator();
   const sku = decodeURIComponent(skuEnc);
-  const oldItem = base[id]?.itens?.[sku] ? { ...base[id].itens[sku] } : null;
-  const oldEnvio = base[id] ? { ...base[id] } : null;
 
   const payload = {
     ...patch,
@@ -1346,13 +1613,13 @@ async function patchItem(id, skuEnc, patch) {
     });
     setSaveState(id, "saved", `item salvo por ${currentOperator}`);
     toast(`Item salvo por ${currentOperator}`);
+    return true;
   } catch(e) {
-    if (oldItem && base[id]?.itens) base[id].itens[sku] = oldItem;
-    if (oldEnvio) base[id] = { ...base[id], ...oldEnvio };
-    rebuildFlat();
-    renderAll();
-    setSaveState(id, "error", "erro ao salvar item");
-    toast("Erro ao salvar item: " + e.message);
+    // Não reverte mais a tela: deixa salvo localmente e cria fila para sincronizar.
+    addPendingPatch({ type:"item", id:String(id), sku, patch: payload });
+    setSaveState(id, "error", "pendente sincronizar");
+    toast("Sem resposta do backend. Alteração ficou na fila e tentará sincronizar.");
+    return false;
   }
 }
 
@@ -1425,6 +1692,12 @@ function bind() {
   $("btnRebuildViews").addEventListener("click", () => runSync("/rebuild-views", "Reorganizando abas"));
   const clearCacheBtn = $("btnClearCache");
   if (clearCacheBtn) clearCacheBtn.addEventListener("click", clearDetailCache);
+  const btnProdutos = $("btnAtualizarProdutos");
+  if (btnProdutos) btnProdutos.addEventListener("click", () => atualizarProdutosMes(true));
+  const btnProdutosSync = $("btnAtualizarProdutosSync");
+  if (btnProdutosSync) btnProdutosSync.addEventListener("click", () => atualizarProdutosMes(true));
+  const btnExportProdutos = $("btnExportarProdutos");
+  if (btnExportProdutos) btnExportProdutos.addEventListener("click", exportarProdutosMesCSV);
 }
 
 document.addEventListener("DOMContentLoaded", () => {
